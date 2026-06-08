@@ -69,6 +69,26 @@ class CheckoutRequest(BaseModel):
     tier: str  # 'pro' or 'academy'
     origin_url: str
 
+class BiomechPayload(BaseModel):
+    wrist_angle: float = 0.0
+    elbow_angle: float = 0.0
+    shoulder_rotation: float = 0.0
+    wrist_velocity: float = 0.0
+    body_lean: float = 0.0
+    foot_position: str = "unknown"  # 'front', 'back', 'unknown'
+
+class PredictionLog(BaseModel):
+    session_id: Optional[str] = None
+    biomech: BiomechPayload
+    predicted_direction: str  # shot_type e.g. 'Cover Drive'
+    predicted_angle: float = 0.0
+    predicted_runs: int = 0
+    actual_direction: Optional[str] = None
+    actual_angle: Optional[float] = None
+    actual_runs: Optional[int] = None
+    correct: bool = True
+    confidence: float = 0.0
+
 # ===================== Helpers =====================
 async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
     """Get current user from session_token cookie or Authorization header."""
@@ -324,6 +344,206 @@ async def analyze_session(session_id: str, request: Request):
         {"$set": {"coaching": coaching_text, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     return {"coaching": coaching_text}
+
+# ===================== Biomechanical Predictions & Personal AI =====================
+# Default personal thresholds (rough means by shot type). These get refined per user
+# after every 10 corrections.
+DEFAULT_THRESHOLDS = {
+    "Straight Drive": {"wrist_angle": 0, "tolerance": 30, "wagon_angle": 0},
+    "Cover Drive":    {"wrist_angle": 45, "tolerance": 20, "wagon_angle": 35},
+    "Off Drive":      {"wrist_angle": 20, "tolerance": 15, "wagon_angle": 15},
+    "On Drive":       {"wrist_angle": -25, "tolerance": 20, "wagon_angle": -25},
+    "Cut":            {"wrist_angle": 55, "tolerance": 25, "wagon_angle": 85},
+    "Square Cut":     {"wrist_angle": 80, "tolerance": 15, "wagon_angle": 90},
+    "Pull":           {"wrist_angle": -70, "tolerance": 30, "wagon_angle": -90},
+    "Hook":           {"wrist_angle": -80, "tolerance": 25, "wagon_angle": -110},
+    "Flick":          {"wrist_angle": -45, "tolerance": 20, "wagon_angle": -50},
+    "Glance":         {"wrist_angle": -60, "tolerance": 20, "wagon_angle": -130},
+    "Sweep":          {"wrist_angle": -100, "tolerance": 25, "wagon_angle": -130},
+    "Defend":         {"wrist_angle": 0, "tolerance": 10, "wagon_angle": 0},
+}
+
+def _recalc_personal_thresholds(corrections: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    """Compute per-direction mean wrist_angle from this user's correction history."""
+    thresholds: Dict[str, Dict[str, float]] = {}
+    by_dir: Dict[str, List[float]] = {}
+    for c in corrections:
+        actual = c.get('actual_direction')
+        if not actual:
+            continue
+        wa = c.get('biomech', {}).get('wrist_angle')
+        if wa is None:
+            continue
+        by_dir.setdefault(actual, []).append(float(wa))
+    for direction, vals in by_dir.items():
+        if not vals:
+            continue
+        mean = sum(vals) / len(vals)
+        # std-ish tolerance: max deviation, bounded
+        tol = max(10.0, min(45.0, max(abs(v - mean) for v in vals) if len(vals) > 1 else 15.0))
+        thresholds[direction] = {"wrist_angle": round(mean, 2), "tolerance": round(tol, 2)}
+    return thresholds
+
+@api_router.get("/profile/biomech")
+async def get_biomech_profile(request: Request):
+    user = await require_user(request)
+    uid = user['user_id']
+    # Compute live accuracy from predictions log
+    total = await db.predictions.count_documents({"user_id": uid})
+    correct = await db.predictions.count_documents({"user_id": uid, "correct": True})
+    corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False})
+    accuracy = (correct / total * 100.0) if total else 0.0
+    profile = user.get('biomech_profile') or {}
+    thresholds = profile.get('personal_thresholds') or {}
+    return {
+        "personal_thresholds": thresholds,
+        "default_thresholds": DEFAULT_THRESHOLDS,
+        "total_predictions": total,
+        "correct_predictions": correct,
+        "corrections": corr_count,
+        "ai_accuracy": round(accuracy, 1),
+        "samples_needed_for_next_recalc": max(0, 10 - (corr_count % 10)) if corr_count > 0 else 10,
+    }
+
+@api_router.post("/predictions/log")
+async def log_prediction(payload: PredictionLog, request: Request):
+    user = await require_user(request)
+    uid = user['user_id']
+    doc = payload.model_dump()
+    doc['user_id'] = uid
+    doc['timestamp'] = datetime.now(timezone.utc).isoformat()
+    await db.predictions.insert_one(doc)
+
+    # If this was a correction (correct=False), maybe recalc thresholds
+    recalculated = False
+    if not payload.correct:
+        corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False})
+        if corr_count > 0 and corr_count % 10 == 0:
+            cursor = db.predictions.find({"user_id": uid, "correct": False}, {"_id": 0}).sort("timestamp", -1).limit(100)
+            corrections = await cursor.to_list(100)
+            thresholds = _recalc_personal_thresholds(corrections)
+            await db.users.update_one(
+                {"user_id": uid},
+                {"$set": {
+                    "biomech_profile.personal_thresholds": thresholds,
+                    "biomech_profile.last_recalc_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            recalculated = True
+
+    # Live accuracy
+    total = await db.predictions.count_documents({"user_id": uid})
+    correct = await db.predictions.count_documents({"user_id": uid, "correct": True})
+    accuracy = (correct / total * 100.0) if total else 0.0
+    return {
+        "ok": True,
+        "recalculated_thresholds": recalculated,
+        "ai_accuracy": round(accuracy, 1),
+        "total_predictions": total,
+    }
+
+@api_router.post("/sessions/{session_id}/coaching/biomech")
+async def biomech_coaching(session_id: str, request: Request):
+    user = await require_user(request)
+    if user.get('tier', 'free') == 'free':
+        raise HTTPException(402, "Biomechanical coaching is a Pro feature.")
+    sess = await db.sessions.find_one({"id": session_id, "user_id": user['user_id']}, {"_id": 0})
+    if not sess:
+        raise HTTPException(404, "Session not found")
+    shots = sess.get('shots', [])
+    if len(shots) < 3:
+        raise HTTPException(400, "Need at least 3 shots for biomechanical analysis.")
+
+    # Pull biomech-tagged predictions for this session
+    preds = await db.predictions.find(
+        {"user_id": user['user_id'], "session_id": session_id},
+        {"_id": 0},
+    ).to_list(500)
+
+    total_balls = len(shots)
+    total_runs = sum(s.get('runs', 0) for s in shots)
+    fours = sum(1 for s in shots if s.get('runs') == 4)
+    sixes = sum(1 for s in shots if s.get('runs') == 6)
+    sr = (total_runs / total_balls * 100) if total_balls else 0
+    off_side_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) < 0)
+    leg_side_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) > 0)
+    off_pct = (off_side_runs / total_runs * 100) if total_runs else 0
+    leg_pct = (leg_side_runs / total_runs * 100) if total_runs else 0
+
+    # Aggregate biomech
+    if preds:
+        avg_wrist = sum(p.get('biomech', {}).get('wrist_angle', 0) for p in preds) / len(preds)
+        avg_elbow = sum(p.get('biomech', {}).get('elbow_angle', 0) for p in preds) / len(preds)
+        avg_shoulder = sum(p.get('biomech', {}).get('shoulder_rotation', 0) for p in preds) / len(preds)
+        avg_velocity = sum(p.get('biomech', {}).get('wrist_velocity', 0) for p in preds) / len(preds)
+        avg_lean = sum(p.get('biomech', {}).get('body_lean', 0) for p in preds) / len(preds)
+    else:
+        avg_wrist = avg_elbow = avg_shoulder = avg_velocity = avg_lean = 0.0
+
+    by_type: Dict[str, Dict[str, int]] = {}
+    for s in shots:
+        st = s.get('shot_type', 'Unknown')
+        by_type.setdefault(st, {"count": 0, "runs": 0})
+        by_type[st]['count'] += 1
+        by_type[st]['runs'] += s.get('runs', 0)
+
+    # most productive zone (by shot type runs)
+    top_zone = max(by_type.items(), key=lambda kv: kv[1]['runs'])[0] if by_type else "—"
+
+    prompt = (
+        f"You are an elite cricket batting coach. Analyse this batter's session data.\n\n"
+        f"SESSION: {sess.get('name')} · Batter: {sess.get('batter_hand')}-handed\n"
+        f"BALLS: {total_balls} · RUNS: {total_runs} · SR: {sr:.1f} · 4s: {fours} · 6s: {sixes}\n"
+        f"OFF-SIDE: {off_pct:.0f}% of runs · LEG-SIDE: {leg_pct:.0f}% of runs\n"
+        f"MOST PRODUCTIVE ZONE / SHOT: {top_zone}\n\n"
+        f"BIOMECHANICAL AVERAGES (from MoveNet Thunder pose tracking):\n"
+        f"- avg wrist angle at impact: {avg_wrist:.1f}°\n"
+        f"- avg elbow angle: {avg_elbow:.1f}° (extension)\n"
+        f"- avg shoulder rotation: {avg_shoulder:.1f}°\n"
+        f"- avg wrist velocity: {avg_velocity:.1f}\n"
+        f"- avg body lean (hip-shoulder line): {avg_lean:.1f}°\n\n"
+        f"SHOT BREAKDOWN:\n" +
+        "\n".join([f"- {k}: {v['count']} shots, {v['runs']} runs" for k, v in by_type.items()]) +
+        "\n\nProvide a full coaching report with EXACTLY these five sections (each headed in CAPS):\n"
+        "1) TECHNICAL ASSESSMENT — name their dominant shot pattern and what the angle data shows about technique.\n"
+        "2) BIOMECHANICAL WEAKNESS — call out the specific body position weakness shown by the angle data.\n"
+        "3) BOWLING ATTACK THAT WOULD TROUBLE THEM — describe the line/length/pace.\n"
+        "4) TWO SPECIFIC DRILLS — to improve their weakest zone (use bullet points).\n"
+        "5) BATTING STYLE PROFILE — one of: aggressive / balanced / defensive — with a short reason.\n\n"
+        "Keep total response under 320 words. Use confident, direct, broadcast-style language."
+    )
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"biomech-{session_id}",
+            system_message="You are an elite cricket batting coach analysing biomechanical data with punchy, broadcast-grade language.",
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        msg = UserMessage(text=prompt)
+        result = await chat.send_message(msg)
+        coaching_text = result if isinstance(result, str) else str(result)
+    except Exception as e:
+        logging.exception("LLM error")
+        raise HTTPException(500, f"AI coaching failed: {e}")
+
+    await db.sessions.update_one(
+        {"id": session_id},
+        {"$set": {"coaching": coaching_text, "coaching_kind": "biomech", "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {
+        "coaching": coaching_text,
+        "summary": {
+            "balls": total_balls, "runs": total_runs, "sr": round(sr, 1),
+            "off_pct": round(off_pct, 1), "leg_pct": round(leg_pct, 1),
+            "top_zone": top_zone,
+            "avg_wrist_angle": round(avg_wrist, 1),
+            "avg_elbow_angle": round(avg_elbow, 1),
+            "avg_shoulder_rotation": round(avg_shoulder, 1),
+            "avg_wrist_velocity": round(avg_velocity, 1),
+            "avg_body_lean": round(avg_lean, 1),
+        },
+    }
 
 # ===================== Stripe Payments =====================
 TIERS = {

@@ -9,8 +9,10 @@ import ShotControls from '@/components/ShotControls';
 import ShotLog from '@/components/ShotLog';
 import RunDistribution from '@/components/RunDistribution';
 import CoachingPanel from '@/components/CoachingPanel';
+import LiveCamera from '@/components/LiveCamera';
+import VideoAnalyzer from '@/components/VideoAnalyzer';
 import { TID } from '@/constants/testIds';
-import { Plus, Video, Camera, Share2 } from 'lucide-react';
+import { Plus, Video, Camera, Share2, Sparkles, Zap } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, checkAuth } = useAuth();
@@ -134,12 +136,31 @@ export default function Dashboard() {
 
   const tier = user?.tier || 'free';
   const freeRemaining = tier === 'free' ? Math.max(0, 10 - shots.length) : Infinity;
+  const isPro = tier === 'pro' || tier === 'academy';
+
+  // Biomech profile (personal thresholds + AI accuracy)
+  const [profile, setProfile] = useState({ personal_thresholds: {}, ai_accuracy: 0, total_predictions: 0 });
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    try {
+      const r = await api.get('/profile/biomech');
+      setProfile(r.data);
+    } catch (_e) { /* ignore */ }
+  }, [user]);
+  useEffect(() => { refreshProfile(); }, [refreshProfile]);
+
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const onAutoShotLogged = (shot) => {
+    setShots((p) => [...p, shot]);
+    refreshProfile();
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="rec-dot" />
           <div className="text-[10px] uppercase tracking-[0.3em] text-primary font-bold">
             {session?.name || 'LIVE SESSION'}
@@ -147,6 +168,15 @@ export default function Dashboard() {
           {tier === 'free' && (
             <span className="ml-2 px-2 py-0.5 rounded border border-primary/30 text-[10px] uppercase tracking-widest text-primary">
               FREE · {freeRemaining} shots left
+            </span>
+          )}
+          {isPro && (
+            <span
+              data-testid="ai-accuracy-badge"
+              className="ml-1 px-2 py-0.5 rounded border border-primary/30 text-[10px] uppercase tracking-widest text-primary font-bold flex items-center gap-1"
+              title="Improves as you correct AI predictions"
+            >
+              <Sparkles className="w-3 h-3" /> AI {profile.ai_accuracy || 0}% · {profile.total_predictions || 0} preds
             </span>
           )}
         </div>
@@ -207,43 +237,67 @@ export default function Dashboard() {
         <CoachingPanel session={session} shots={shots} tier={tier} onUpdated={setCoaching} />
       </div>
 
-      {/* Coming-soon shells */}
+      {/* Auto-detect entry points (MoveNet Thunder) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="broadcast-card p-3 sm:p-4 relative overflow-hidden">
-          <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold mb-2">VIDEO UPLOAD · MOVENET</div>
-          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative">
-            <Video className="w-10 h-10 text-muted-foreground" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="px-3 py-1.5 rounded bg-primary/20 border border-primary/40 text-[10px] uppercase tracking-widest text-primary font-bold">
-                Coming in v2 · MoveNet auto-detection
-              </div>
-            </div>
+        <div className="broadcast-card p-3 sm:p-4 relative overflow-hidden group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold">VIDEO ANALYSER · MOVENET THUNDER</div>
+            {isPro ? null : <span className="text-[10px] uppercase tracking-widest text-primary">PRO</span>}
           </div>
-          <button data-testid={TID.uploadVideoBtn} disabled className="mt-3 w-full py-2 rounded border border-white/10 text-xs uppercase tracking-widest text-muted-foreground opacity-60">
-            Upload video (1–3 min)
+          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative overflow-hidden">
+            <Video className="w-12 h-12 text-primary/60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent pointer-events-none" />
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground">Upload a 1–3 min batting clip · auto-detected shots draw the wagon wheel for you.</div>
+          <button
+            data-testid={TID.uploadVideoBtn}
+            onClick={() => (isPro ? setVideoOpen(true) : navigate('/pricing'))}
+            className="mt-3 w-full py-2 rounded bg-primary text-black font-black uppercase tracking-widest text-xs hover:bg-primary/90 flex items-center justify-center gap-1.5"
+          >
+            <Zap className="w-3.5 h-3.5" /> {isPro ? 'UPLOAD & ANALYSE' : 'UPGRADE TO PRO'}
           </button>
         </div>
         <div className="broadcast-card p-3 sm:p-4">
-          <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold mb-2">LIVE CAMERA · POSE DETECT</div>
-          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative">
-            <Camera className="w-10 h-10 text-muted-foreground" />
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold">LIVE CAMERA · POSE DETECT</div>
+            {isPro ? null : <span className="text-[10px] uppercase tracking-widest text-primary">PRO</span>}
+          </div>
+          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative overflow-hidden">
+            <Camera className="w-12 h-12 text-primary/60" />
             <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-widest text-red-400">
-              <div className="rec-dot" /> REC
+              <div className="rec-dot" /> READY
             </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="px-3 py-1.5 rounded bg-primary/20 border border-primary/40 text-[10px] uppercase tracking-widest text-primary font-bold">
-                Coming in v2 · live swing detection
-              </div>
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent pointer-events-none" />
           </div>
-          <div className="mt-3 text-[10px] text-muted-foreground">
-            Tip: film from the side, full body in frame, 1–2 minutes per spell.
-          </div>
-          <button data-testid={TID.liveCameraBtn} disabled className="mt-2 w-full py-2 rounded border border-white/10 text-xs uppercase tracking-widest text-muted-foreground opacity-60">
-            Start live camera
+          <div className="mt-2 text-[10px] text-muted-foreground">Film side-on · MoveNet Thunder detects every swing live and logs the shot automatically.</div>
+          <button
+            data-testid={TID.liveCameraBtn}
+            onClick={() => (isPro ? setLiveOpen(true) : navigate('/pricing'))}
+            className="mt-3 w-full py-2 rounded bg-primary text-black font-black uppercase tracking-widest text-xs hover:bg-primary/90 flex items-center justify-center gap-1.5"
+          >
+            <Zap className="w-3.5 h-3.5" /> {isPro ? 'START LIVE CAMERA' : 'UPGRADE TO PRO'}
           </button>
         </div>
       </div>
+
+      {/* Auto-detect modals */}
+      <LiveCamera
+        open={liveOpen}
+        onClose={() => setLiveOpen(false)}
+        session={session}
+        batterHand={batterHand}
+        onShotLogged={onAutoShotLogged}
+        personalThresholds={profile.personal_thresholds}
+        aiAccuracy={profile.ai_accuracy}
+      />
+      <VideoAnalyzer
+        open={videoOpen}
+        onClose={() => setVideoOpen(false)}
+        session={session}
+        batterHand={batterHand}
+        onAnalysisComplete={() => { loadOrCreate(); refreshProfile(); }}
+        personalThresholds={profile.personal_thresholds}
+      />
     </div>
   );
 }

@@ -1,0 +1,74 @@
+{
+  "summary": "Iteration 2 (Biomechanical AI) backend + frontend verification. 8/8 new biomech pytest cases pass; 18/18 prior wheelvision tests still pass (no regressions). Frontend: AI accuracy badge renders for Pro, UPLOAD & ANALYSE / START LIVE CAMERA open VideoAnalyzer & LiveCamera modals (select-video-btn / setup-continue-btn visible) and close cleanly; Free user sees 'UPGRADE TO PRO' on both cards and clicking either navigates to /pricing. Manual shot logging still increments stats (BALLS=1, RUNS=1, SR=100.0).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": {
+    "backend_biomech": {
+      "file": "/app/backend/tests/test_biomech_api.py",
+      "passed": 8,
+      "failed": 0,
+      "cases": [
+        "TestBiomechProfile::test_anonymous_401",
+        "TestBiomechProfile::test_pro_returns_full_shape",
+        "TestPredictionLogging::test_anonymous_log_401",
+        "TestPredictionLogging::test_correct_log_does_not_trigger_recalc",
+        "TestPredictionLogging::test_ninth_correction_no_recalc_then_tenth_triggers (verifies personal_thresholds populated post-10th, Cover Drive mean within 40-50)",
+        "TestBiomechCoaching::test_free_user_402",
+        "TestBiomechCoaching::test_pro_too_few_shots_400",
+        "TestBiomechCoaching::test_pro_success_and_persistence (asserts summary keys balls/runs/sr/off_pct/leg_pct/top_zone/avg_wrist_angle/avg_elbow_angle/avg_shoulder_rotation/avg_wrist_velocity/avg_body_lean + coaching persisted + coaching_kind='biomech')"
+      ]
+    },
+    "backend_regression": {
+      "file": "/app/backend/tests/test_wheelvision_api.py",
+      "passed": 18,
+      "failed": 0
+    },
+    "frontend_playwright": {
+      "scenarios": [
+        "Pro dashboard: ai-accuracy-badge visible, text 'AI 28.6% · 14 preds'",
+        "Pro: upload-video-btn opens modal (select-video-btn visible); video-analyzer-close closes it",
+        "Pro: live-camera-btn opens modal (setup-continue-btn visible); live-camera-close closes it",
+        "Free: upload-video-btn label 'UPGRADE TO PRO', clicking redirects to /pricing",
+        "Free: live-camera-btn label 'UPGRADE TO PRO', clicking redirects to /pricing",
+        "Pro: manual shot (runs=1 + log-shot-btn) increments BALLS=1, RUNS=1, SR=100.0"
+      ]
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_biomech_api.py",
+    "/app/backend/tests/test_wheelvision_api.py",
+    "/app/test_reports/pytest/biomech_results.xml",
+    "/app/test_reports/pytest/wheelvision_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py: /predictions/log uses (corr_count > 0 and corr_count % 10 == 0) to trigger recalc — correct behaviour for 10th/20th/... corrections. Works as designed.",
+    "_recalc_personal_thresholds tolerance heuristic uses max deviation bounded to [10,45] — fine for MVP but consider stddev for tighter bands once dataset grows.",
+    "BiomechCoaching summary uses len(preds) (biomech predictions for this session) for averages but len(shots) for balls — slight inconsistency if user logged manual shots but no predictions. Currently OK because summary['balls'] reflects shots logged. Worth a comment in code.",
+    "Dashboard.jsx: TID.uploadVideoBtn/liveCameraBtn fall through to navigate('/pricing') for free users via onClick branch — confirmed working. Good.",
+    "LiveCamera/VideoAnalyzer correctly lazy-load TF.js via /lib/poseDetector.js — bundle stays light for non-pro browsers (not directly tested in headless, but module structure is sound).",
+    "No 'run-1' data-testid exists; the runs row uses generic numbered buttons (1,2,3,...). If automation requires per-runs testids, add data-testid={`run-${n}`} for stability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_biomech_api.py (NEW)"
+  ],
+  "success_rate": { "backend": "100% (26/26)", "frontend": "100% (6/6 surfaces verified)" },
+  "test_credentials": {
+    "FREE_TOKEN": "test_session_free_1780959843049",
+    "PRO_TOKEN": "test_session_pro_1780959843049",
+    "ACAD_TOKEN": "test_session_acad_1780959843049",
+    "FREE_UID": "test-free-user-1780959843049",
+    "PRO_UID": "test-pro-user-1780959843049",
+    "ACAD_UID": "test-acad-user-1780959843049",
+    "note": "Seeded via mongosh into test_database.users + test_database.user_sessions, 7-day expiry. Pro user accumulated 14 prediction logs across tests (10 corrections + 4 correct), so AI accuracy badge reads 28.6%."
+  },
+  "seed_data_creation": "Inserted 3 users (free/pro/academy) + matching user_sessions in test_database. Pro user predictions table populated by test_ninth_correction_no_recalc_then_tenth_triggers (10 corrections) — recalc fired on the 10th, biomech_profile.personal_thresholds now contains Cover Drive (mean ~46°), Pull (~-70°), Flick (~-45°).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "For future iterations, reuse the seeded tokens above (or seed fresh per /app/auth_testing.md). Biomech tests assume base_corrections==0 for the Pro user when verifying the 9th-no-recalc/10th-recalc boundary; if reusing the same Pro user across runs, that branch is skipped gracefully (only the count delta is asserted). Frontend live-camera and video-frame analysis cannot be fully exercised in headless Playwright (no WebGL/camera) — verifying that the modals open with their first interactive testid is the right surface check.",
+  "rca of the issue": "n/a — no failures."
+}
