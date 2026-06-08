@@ -48,8 +48,8 @@ export default function Dashboard() {
         setSession(r.data);
         setShots([]);
       }
-    } catch (e) {
-      // ignore
+    } catch (err) {
+      console.error('loadOrCreate failed', err);
     }
   }, [user]);
 
@@ -61,7 +61,8 @@ export default function Dashboard() {
       setSession(r.data);
       setShots([]);
       toast.success('New session started');
-    } catch {
+    } catch (err) {
+      console.error('newSession failed', err);
       toast.error('Could not create session');
     }
   };
@@ -131,7 +132,7 @@ export default function Dashboard() {
         await navigator.clipboard.writeText(`${text} — ${url}`);
         toast.success('Copied share text to clipboard');
       }
-    } catch (_e) { /* ignore share errors */ }
+    } catch (err) { console.error('share failed', err); }
   };
 
   const tier = user?.tier || 'free';
@@ -145,7 +146,7 @@ export default function Dashboard() {
     try {
       const r = await api.get('/profile/biomech');
       setProfile(r.data);
-    } catch (_e) { /* ignore */ }
+    } catch (err) { console.error('refreshProfile failed', err); }
   }, [user]);
   useEffect(() => { refreshProfile(); }, [refreshProfile]);
 

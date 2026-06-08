@@ -292,32 +292,73 @@ async def analyze_session(session_id: str, request: Request):
     if len(shots) < 3:
         raise HTTPException(400, "Need at least 3 shots to analyze.")
 
-    # Build stats summary
+    stats = _aggregate_shot_stats(shots)
+    prompt = _build_basic_coaching_prompt(sess, shots, stats)
+    coaching_text = await _run_llm_coaching(
+        session_key=f"coach-{session_id}",
+        system_message="You are a world-class cricket batting analyst with a punchy broadcast style.",
+        prompt=prompt,
+    )
+
+    await db.sessions.update_one(
+        {"id": session_id},
+        {"$set": {"coaching": coaching_text, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"coaching": coaching_text}
+
+def _aggregate_shot_stats(shots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate per-session stats from a list of shot dicts."""
     total_balls = len(shots)
-    total_runs = sum(s['runs'] for s in shots)
-    fours = sum(1 for s in shots if s['runs'] == 4)
-    sixes = sum(1 for s in shots if s['runs'] == 6)
-    dots = sum(1 for s in shots if s['runs'] == 0)
+    total_runs = sum(s.get('runs', 0) for s in shots)
+    fours = sum(1 for s in shots if s.get('runs') == 4)
+    sixes = sum(1 for s in shots if s.get('runs') == 6)
+    dots = sum(1 for s in shots if s.get('runs') == 0)
     sr = (total_runs / total_balls * 100) if total_balls else 0
     by_type: Dict[str, Dict[str, int]] = {}
     for s in shots:
-        st = s['shot_type']
+        st = s.get('shot_type', 'Unknown')
         by_type.setdefault(st, {"count": 0, "runs": 0})
         by_type[st]['count'] += 1
-        by_type[st]['runs'] += s['runs']
+        by_type[st]['runs'] += s.get('runs', 0)
+    off_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) < 0)
+    leg_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) > 0)
+    return {
+        "total_balls": total_balls, "total_runs": total_runs, "fours": fours,
+        "sixes": sixes, "dots": dots, "sr": sr, "by_type": by_type,
+        "off_runs": off_runs, "leg_runs": leg_runs,
+        "off_pct": (off_runs / total_runs * 100) if total_runs else 0,
+        "leg_pct": (leg_runs / total_runs * 100) if total_runs else 0,
+        "top_zone": max(by_type.items(), key=lambda kv: kv[1]['runs'])[0] if by_type else "—",
+    }
 
-    prompt = (
+def _aggregate_biomech_preds(preds: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Compute average biomechanical signals across predictions."""
+    if not preds:
+        return {"avg_wrist": 0.0, "avg_elbow": 0.0, "avg_shoulder": 0.0, "avg_velocity": 0.0, "avg_lean": 0.0}
+    n = len(preds)
+    def mean(key: str) -> float:
+        return sum(p.get('biomech', {}).get(key, 0) for p in preds) / n
+    return {
+        "avg_wrist": mean('wrist_angle'),
+        "avg_elbow": mean('elbow_angle'),
+        "avg_shoulder": mean('shoulder_rotation'),
+        "avg_velocity": mean('wrist_velocity'),
+        "avg_lean": mean('body_lean'),
+    }
+
+def _build_basic_coaching_prompt(sess: Dict[str, Any], shots: List[Dict[str, Any]], stats: Dict[str, Any]) -> str:
+    breakdown = "\n".join([f"- {k}: {v['count']} shots, {v['runs']} runs" for k, v in stats['by_type'].items()])
+    positions = "\n".join([f"- {s['shot_type']} -> angle {s.get('angle', 0):.0f}°, {s['runs']} runs" for s in shots[:50]])
+    return (
         f"You are an elite cricket batting coach analyzing a session. Batter is {sess.get('batter_hand', 'RH')}-handed.\n\n"
         f"SESSION STATS:\n"
-        f"- Balls faced: {total_balls}\n"
-        f"- Runs: {total_runs}\n"
-        f"- Strike rate: {sr:.1f}\n"
-        f"- 4s: {fours}, 6s: {sixes}, Dots: {dots}\n\n"
-        f"SHOT BREAKDOWN BY TYPE:\n" +
-        "\n".join([f"- {k}: {v['count']} shots, {v['runs']} runs" for k, v in by_type.items()]) +
-        "\n\nFIELD POSITIONS (each shot as angle deg from straight, runs):\n" +
-        "\n".join([f"- {s['shot_type']} -> angle {s.get('angle', 0):.0f}°, {s['runs']} runs" for s in shots[:50]]) +
-        "\n\nProvide a tight, broadcast-style analysis with EXACTLY these four sections, each headed in CAPS:\n"
+        f"- Balls faced: {stats['total_balls']}\n"
+        f"- Runs: {stats['total_runs']}\n"
+        f"- Strike rate: {stats['sr']:.1f}\n"
+        f"- 4s: {stats['fours']}, 6s: {stats['sixes']}, Dots: {stats['dots']}\n\n"
+        f"SHOT BREAKDOWN BY TYPE:\n{breakdown}\n\n"
+        f"FIELD POSITIONS (each shot as angle deg from straight, runs):\n{positions}\n\n"
+        "Provide a tight, broadcast-style analysis with EXACTLY these four sections, each headed in CAPS:\n"
         "1) STRONGEST SCORING AREA — name the field zone they dominate.\n"
         "2) WEAKNESS / GAP — name the zone or shot type they avoid or score poorly in.\n"
         "3) ONE TACTICAL RECOMMENDATION — a single, specific action.\n"
@@ -325,12 +366,40 @@ async def analyze_session(session_id: str, request: Request):
         "Keep total response under 220 words. Use confident, direct language."
     )
 
+def _build_biomech_coaching_prompt(sess: Dict[str, Any], stats: Dict[str, Any], avgs: Dict[str, float]) -> str:
+    breakdown = "\n".join([f"- {k}: {v['count']} shots, {v['runs']} runs" for k, v in stats['by_type'].items()])
+    return (
+        f"You are an elite cricket batting coach. Analyse this batter's session data.\n\n"
+        f"SESSION: {sess.get('name')} · Batter: {sess.get('batter_hand')}-handed\n"
+        f"BALLS: {stats['total_balls']} · RUNS: {stats['total_runs']} · SR: {stats['sr']:.1f} · 4s: {stats['fours']} · 6s: {stats['sixes']}\n"
+        f"OFF-SIDE: {stats['off_pct']:.0f}% of runs · LEG-SIDE: {stats['leg_pct']:.0f}% of runs\n"
+        f"MOST PRODUCTIVE ZONE / SHOT: {stats['top_zone']}\n\n"
+        f"BIOMECHANICAL AVERAGES (from MoveNet Thunder pose tracking):\n"
+        f"- avg wrist angle at impact: {avgs['avg_wrist']:.1f}°\n"
+        f"- avg elbow angle: {avgs['avg_elbow']:.1f}° (extension)\n"
+        f"- avg shoulder rotation: {avgs['avg_shoulder']:.1f}°\n"
+        f"- avg wrist velocity: {avgs['avg_velocity']:.1f}\n"
+        f"- avg body lean (hip-shoulder line): {avgs['avg_lean']:.1f}°\n\n"
+        f"SHOT BREAKDOWN:\n{breakdown}\n\n"
+        "Provide a full coaching report with EXACTLY these five sections (each headed in CAPS):\n"
+        "1) TECHNICAL ASSESSMENT — name their dominant shot pattern and what the angle data shows about technique.\n"
+        "2) BIOMECHANICAL WEAKNESS — call out the specific body position weakness shown by the angle data.\n"
+        "3) BOWLING ATTACK THAT WOULD TROUBLE THEM — describe the line/length/pace.\n"
+        "4) TWO SPECIFIC DRILLS — to improve their weakest zone (use bullet points).\n"
+        "5) BATTING STYLE PROFILE — one of: aggressive / balanced / defensive — with a short reason.\n\n"
+        "Keep total response under 320 words. Use confident, direct, broadcast-style language."
+    )
+
+async def _run_llm_coaching(session_key: str, system_message: str, prompt: str) -> str:
+    """Send the coaching prompt to Claude via emergentintegrations.
+    Always returns a string (initialized to empty before the LLM call)."""
+    coaching_text = ""
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
-            session_id=f"coach-{session_id}",
-            system_message="You are a world-class cricket batting analyst with a punchy broadcast style.",
+            session_id=session_key,
+            system_message=system_message,
         ).with_model("anthropic", "claude-sonnet-4-5-20250929")
         msg = UserMessage(text=prompt)
         result = await chat.send_message(msg)
@@ -338,12 +407,7 @@ async def analyze_session(session_id: str, request: Request):
     except Exception as e:
         logging.exception("LLM error")
         raise HTTPException(500, f"AI coaching failed: {e}")
-
-    await db.sessions.update_one(
-        {"id": session_id},
-        {"$set": {"coaching": coaching_text, "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    return {"coaching": coaching_text}
+    return coaching_text
 
 # ===================== Biomechanical Predictions & Personal AI =====================
 # Default personal thresholds (rough means by shot type). These get refined per user
@@ -454,78 +518,20 @@ async def biomech_coaching(session_id: str, request: Request):
     if len(shots) < 3:
         raise HTTPException(400, "Need at least 3 shots for biomechanical analysis.")
 
-    # Pull biomech-tagged predictions for this session
     preds = await db.predictions.find(
         {"user_id": user['user_id'], "session_id": session_id},
         {"_id": 0},
     ).to_list(500)
 
-    total_balls = len(shots)
-    total_runs = sum(s.get('runs', 0) for s in shots)
-    fours = sum(1 for s in shots if s.get('runs') == 4)
-    sixes = sum(1 for s in shots if s.get('runs') == 6)
-    sr = (total_runs / total_balls * 100) if total_balls else 0
-    off_side_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) < 0)
-    leg_side_runs = sum(s.get('runs', 0) for s in shots if (s.get('angle') or 0) > 0)
-    off_pct = (off_side_runs / total_runs * 100) if total_runs else 0
-    leg_pct = (leg_side_runs / total_runs * 100) if total_runs else 0
+    stats = _aggregate_shot_stats(shots)
+    avgs = _aggregate_biomech_preds(preds)
+    prompt = _build_biomech_coaching_prompt(sess, stats, avgs)
 
-    # Aggregate biomech
-    if preds:
-        avg_wrist = sum(p.get('biomech', {}).get('wrist_angle', 0) for p in preds) / len(preds)
-        avg_elbow = sum(p.get('biomech', {}).get('elbow_angle', 0) for p in preds) / len(preds)
-        avg_shoulder = sum(p.get('biomech', {}).get('shoulder_rotation', 0) for p in preds) / len(preds)
-        avg_velocity = sum(p.get('biomech', {}).get('wrist_velocity', 0) for p in preds) / len(preds)
-        avg_lean = sum(p.get('biomech', {}).get('body_lean', 0) for p in preds) / len(preds)
-    else:
-        avg_wrist = avg_elbow = avg_shoulder = avg_velocity = avg_lean = 0.0
-
-    by_type: Dict[str, Dict[str, int]] = {}
-    for s in shots:
-        st = s.get('shot_type', 'Unknown')
-        by_type.setdefault(st, {"count": 0, "runs": 0})
-        by_type[st]['count'] += 1
-        by_type[st]['runs'] += s.get('runs', 0)
-
-    # most productive zone (by shot type runs)
-    top_zone = max(by_type.items(), key=lambda kv: kv[1]['runs'])[0] if by_type else "—"
-
-    prompt = (
-        f"You are an elite cricket batting coach. Analyse this batter's session data.\n\n"
-        f"SESSION: {sess.get('name')} · Batter: {sess.get('batter_hand')}-handed\n"
-        f"BALLS: {total_balls} · RUNS: {total_runs} · SR: {sr:.1f} · 4s: {fours} · 6s: {sixes}\n"
-        f"OFF-SIDE: {off_pct:.0f}% of runs · LEG-SIDE: {leg_pct:.0f}% of runs\n"
-        f"MOST PRODUCTIVE ZONE / SHOT: {top_zone}\n\n"
-        f"BIOMECHANICAL AVERAGES (from MoveNet Thunder pose tracking):\n"
-        f"- avg wrist angle at impact: {avg_wrist:.1f}°\n"
-        f"- avg elbow angle: {avg_elbow:.1f}° (extension)\n"
-        f"- avg shoulder rotation: {avg_shoulder:.1f}°\n"
-        f"- avg wrist velocity: {avg_velocity:.1f}\n"
-        f"- avg body lean (hip-shoulder line): {avg_lean:.1f}°\n\n"
-        f"SHOT BREAKDOWN:\n" +
-        "\n".join([f"- {k}: {v['count']} shots, {v['runs']} runs" for k, v in by_type.items()]) +
-        "\n\nProvide a full coaching report with EXACTLY these five sections (each headed in CAPS):\n"
-        "1) TECHNICAL ASSESSMENT — name their dominant shot pattern and what the angle data shows about technique.\n"
-        "2) BIOMECHANICAL WEAKNESS — call out the specific body position weakness shown by the angle data.\n"
-        "3) BOWLING ATTACK THAT WOULD TROUBLE THEM — describe the line/length/pace.\n"
-        "4) TWO SPECIFIC DRILLS — to improve their weakest zone (use bullet points).\n"
-        "5) BATTING STYLE PROFILE — one of: aggressive / balanced / defensive — with a short reason.\n\n"
-        "Keep total response under 320 words. Use confident, direct, broadcast-style language."
+    coaching_text = await _run_llm_coaching(
+        session_key=f"biomech-{session_id}",
+        system_message="You are an elite cricket batting coach analysing biomechanical data with punchy, broadcast-grade language.",
+        prompt=prompt,
     )
-
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"biomech-{session_id}",
-            system_message="You are an elite cricket batting coach analysing biomechanical data with punchy, broadcast-grade language.",
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-        msg = UserMessage(text=prompt)
-        result = await chat.send_message(msg)
-        coaching_text = result if isinstance(result, str) else str(result)
-    except Exception as e:
-        logging.exception("LLM error")
-        raise HTTPException(500, f"AI coaching failed: {e}")
 
     await db.sessions.update_one(
         {"id": session_id},
@@ -534,14 +540,14 @@ async def biomech_coaching(session_id: str, request: Request):
     return {
         "coaching": coaching_text,
         "summary": {
-            "balls": total_balls, "runs": total_runs, "sr": round(sr, 1),
-            "off_pct": round(off_pct, 1), "leg_pct": round(leg_pct, 1),
-            "top_zone": top_zone,
-            "avg_wrist_angle": round(avg_wrist, 1),
-            "avg_elbow_angle": round(avg_elbow, 1),
-            "avg_shoulder_rotation": round(avg_shoulder, 1),
-            "avg_wrist_velocity": round(avg_velocity, 1),
-            "avg_body_lean": round(avg_lean, 1),
+            "balls": stats['total_balls'], "runs": stats['total_runs'], "sr": round(stats['sr'], 1),
+            "off_pct": round(stats['off_pct'], 1), "leg_pct": round(stats['leg_pct'], 1),
+            "top_zone": stats['top_zone'],
+            "avg_wrist_angle": round(avgs['avg_wrist'], 1),
+            "avg_elbow_angle": round(avgs['avg_elbow'], 1),
+            "avg_shoulder_rotation": round(avgs['avg_shoulder'], 1),
+            "avg_wrist_velocity": round(avgs['avg_velocity'], 1),
+            "avg_body_lean": round(avgs['avg_lean'], 1),
         },
     }
 

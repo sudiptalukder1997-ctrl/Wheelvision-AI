@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
   }, [checkAuth]);
 
   const logout = async () => {
-    try { await api.post('/auth/logout'); } catch (_e) { /* ignore */ }
+    try { await api.post('/auth/logout'); } catch (err) { console.warn('logout failed', err); }
     setUser(null);
     window.location.href = '/';
   };

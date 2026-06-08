@@ -13,7 +13,7 @@ async function loadDeps() {
     import('@tensorflow-models/pose-detection'),
   ]);
   // ensure WebGL backend (default in @tensorflow/tfjs)
-  try { await tf.setBackend('webgl'); } catch (_) { /* fall back to cpu */ }
+  try { await tf.setBackend('webgl'); } catch (err) { console.warn('WebGL backend unavailable, falling back', err); }
   await tf.ready();
   cachedModules = { tf, poseDetection };
   return cachedModules;
@@ -47,7 +47,7 @@ export async function estimateOnSource(source, opts = {}) {
 
 export function disposeDetector() {
   if (detectorInstance) {
-    try { detectorInstance.dispose(); } catch (_) { /* ignore */ }
+    try { detectorInstance.dispose(); } catch (err) { console.warn('detector dispose failed', err); }
   }
   detectorInstance = null;
   detectorPromise = null;

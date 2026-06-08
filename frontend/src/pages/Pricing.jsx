@@ -93,8 +93,8 @@ export default function Pricing() {
                 <div className="text-[11px] uppercase tracking-widest text-muted-foreground mt-1">{t.pitch}</div>
               </div>
               <ul className="mt-4 space-y-2 text-sm flex-1">
-                {t.bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2 text-foreground/90">
+                {t.bullets.map((b) => (
+                  <li key={b} className="flex items-start gap-2 text-foreground/90">
                     <Check className="w-4 h-4 text-primary mt-0.5 shrink-0" /> <span className="text-xs leading-relaxed">{b}</span>
                   </li>
                 ))}

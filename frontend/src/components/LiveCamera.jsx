@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { getDetector, drawSkeleton, howManyKeypointsDetected } from '@/lib/poseDetector';
 import { computeFeatures, detectSwing, classifyShot, finalConfidence } from '@/lib/biomechanics';
-import { api, shotTypeToAngle } from '@/lib/api';
+import logShotAndPrediction from '@/lib/predictionApi';
+import useCameraStream from '@/lib/useCameraStream';
 import { toast } from 'sonner';
 import { Camera, X, Pause, Play, Activity } from 'lucide-react';
 import ConfirmationCard from '@/components/ConfirmationCard';
@@ -16,7 +17,6 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
   const canvasRef = useRef(null);
   const stateRef = useRef({ running: false, history: [], lastDetectionAt: 0, lastPrediction: null });
   const rafRef = useRef(0);
-  const streamRef = useRef(null);
 
   const [phase, setPhase] = useState('setup'); // setup | loading | running | paused
   const [status, setStatus] = useState('Loading MoveNet Thunder…');
@@ -31,53 +31,20 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
     rafRef.current = 0;
   }, []);
 
+  const { start: startStream, stop: stopStream } = useCameraStream({ videoRef });
+
   const stopCamera = useCallback(() => {
     stopLoop();
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-  }, [stopLoop]);
+    stopStream();
+  }, [stopLoop, stopStream]);
 
   const logPrediction = useCallback(async ({ correct, prediction, override }) => {
-    const biomech = prediction?.features || {};
-    const finalRuns = override?.runs ?? prediction.runs;
-    const finalDir = override?.shotType ?? prediction.shotType;
-    const finalAngle = override?.angle ?? prediction.wagonAngle;
     try {
-      // Log shot to session
-      if (session?.id) {
-        const r = await api.post(`/sessions/${session.id}/shots`, {
-          runs: finalRuns,
-          shot_type: finalDir,
-          x: 0.5,
-          y: 0.5,
-          angle: finalAngle,
-        });
-        onShotLogged?.(r.data);
-      }
-      // Log prediction (correct or correction)
-      await api.post('/predictions/log', {
-        session_id: session?.id,
-        biomech: {
-          wrist_angle: biomech.wrist_angle ?? 0,
-          elbow_angle: biomech.elbow_angle ?? 0,
-          shoulder_rotation: biomech.shoulder_rotation ?? 0,
-          wrist_velocity: prediction.velocity ?? 0,
-          body_lean: biomech.body_lean ?? 0,
-          foot_position: prediction.footPosition || 'unknown',
-        },
-        predicted_direction: prediction.shotType,
-        predicted_angle: prediction.wagonAngle,
-        predicted_runs: prediction.runs,
-        actual_direction: finalDir,
-        actual_angle: finalAngle,
-        actual_runs: finalRuns,
-        correct,
-        confidence: prediction.confidence,
-      });
-    } catch (e) {
-      const msg = e?.response?.data?.detail || 'Could not log shot';
+      const shot = await logShotAndPrediction({ session, prediction, correct, override });
+      if (shot) onShotLogged?.(shot);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Could not log shot';
+      console.error('logPrediction failed', err);
       toast.error(msg);
     }
   }, [session, onShotLogged]);
@@ -116,8 +83,9 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
     let pose;
     try {
       pose = await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
-    } catch (_e) {
+    } catch (err) {
       pose = null;
+      console.warn('pose detect failed', err);
     }
     const p = pose?.[0];
 
@@ -169,7 +137,7 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
           };
           stateRef.current.lastDetectionAt = now;
           stateRef.current.lastPrediction = prediction;
-          if (navigator.vibrate) try { navigator.vibrate(80); } catch (_e) { /* ignore */ }
+          if (navigator.vibrate) try { navigator.vibrate(80); } catch (err) { console.warn('vibrate failed', err); }
           if (conf >= 90) {
             // auto confirm immediately, no card
             await logPrediction({ correct: true, prediction });
@@ -187,33 +155,20 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
     setStatus('Loading MoveNet Thunder…');
     setPhase('loading');
     try {
-      await getDetector('thunder');
-    } catch (e) {
-      setStatus('Could not load pose model');
-      toast.error('Could not load MoveNet Thunder');
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      await startStream();
       setPhase('running');
       setStatus('Live · MoveNet Thunder');
       stateRef.current.running = true;
       stateRef.current.history = [];
       rafRef.current = requestAnimationFrame(loop);
-    } catch (e) {
-      setStatus('Camera permission denied');
-      toast.error('Camera permission denied. Allow access in your browser.');
+    } catch (err) {
+      console.error('camera/model load failed', err);
+      const isPermission = err?.name === 'NotAllowedError' || err?.name === 'NotFoundError';
+      setStatus(isPermission ? 'Camera permission denied' : 'Could not start camera');
+      toast.error(isPermission ? 'Camera permission denied. Allow access in your browser.' : 'Could not load MoveNet Thunder');
       setPhase('setup');
     }
-  }, [loop]);
+  }, [loop, startStream]);
 
   // cleanup on close
   useEffect(() => {

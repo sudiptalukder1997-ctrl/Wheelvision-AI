@@ -53,8 +53,8 @@ export default function CameraSetupGuide({ onContinue, onCancel, title = 'CAMERA
           { icon: Ruler, t: '3–4 metres away', s: 'Waist height ideally.' },
           { icon: User, t: 'Full body in frame', s: 'Head to toe, no cropping.' },
           { icon: Sun, t: 'Good lighting', s: 'Avoid harsh backlight.' },
-        ].map((tip, i) => (
-          <div key={i} className="flex items-start gap-2 p-2 rounded border border-white/10 bg-white/[0.02]">
+        ].map((tip) => (
+          <div key={tip.t} className="flex items-start gap-2 p-2 rounded border border-white/10 bg-white/[0.02]">
             <div className="w-7 h-7 rounded bg-primary/10 border border-primary/30 flex items-center justify-center">
               <tip.icon className="w-3.5 h-3.5 text-primary" />
             </div>

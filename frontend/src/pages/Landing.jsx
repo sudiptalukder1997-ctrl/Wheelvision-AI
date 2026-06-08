@@ -69,8 +69,8 @@ export default function Landing() {
             { icon: Target, title: 'Wagon Wheel', body: 'Tap-to-log shots on a real cricket field with field positions, LH/RH support and instant boundary glow.' },
             { icon: Activity, title: 'Broadcast Stats', body: 'Live balls, runs, strike rate, 4s, 6s and dots — styled like a real TV scoreboard.' },
             { icon: Sparkles, title: 'AI Coaching', body: 'Claude Sonnet analyses your shots and tells you your strongest zone, your weakness and one tactical fix.' },
-          ].map((f, i) => (
-            <div key={i} className="broadcast-card p-4">
+          ].map((f) => (
+            <div key={f.title} className="broadcast-card p-4">
               <f.icon className="w-5 h-5 text-primary" />
               <div className="mt-2 font-display font-bold text-foreground tracking-tight">{f.title}</div>
               <div className="mt-1 text-xs text-muted-foreground leading-relaxed">{f.body}</div>
