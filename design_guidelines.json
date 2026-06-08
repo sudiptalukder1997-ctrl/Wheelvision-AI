@@ -1,0 +1,101 @@
+{
+  "theme": "DARK",
+  "archetype": "2 (Performance Pro / Broadcast Analytics)",
+  "typography": {
+    "font_strategy": "The 'Command Center Mono' strategy. All monospace as explicitly requested by the user, styled heavily to feel like a high-end sports broadcast graphic rather than a code editor.",
+    "heading_font": "JetBrains Mono",
+    "body_font": "Space Mono",
+    "scales": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter leading-none",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-sm sm:text-base font-normal leading-relaxed tracking-wide",
+      "stats_massive": "text-5xl sm:text-6xl font-black tracking-tighter tabular-nums",
+      "labels": "text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground"
+    }
+  },
+  "colors": {
+    "background": {
+      "base": "#000000",
+      "surface_1": "#0A0A0A",
+      "surface_2": "#111A14"
+    },
+    "brand": {
+      "primary": "#22C55E",
+      "primary_glow": "rgba(34, 197, 94, 0.4)",
+      "secondary": "#054322"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "accent": "#4ADE80"
+    },
+    "border": {
+      "default": "#1F2937",
+      "active": "#22C55E"
+    },
+    "wagon_wheel": {
+      "0": "#6B7280",
+      "1": "#06B6D4",
+      "2": "#22C55E",
+      "3": "#EAB308",
+      "4": "#F97316",
+      "6": "#A855F7"
+    }
+  },
+  "spacing_and_layout": {
+    "strategy": "MODE B: THE 'CONTROL ROOM' GRID. Dense, highly functional, modular bento boxes. No wasted space.",
+    "container_padding": "p-4 sm:p-6 md:p-8",
+    "grid_gap": "gap-3 sm:gap-4 md:gap-6",
+    "mobile_first": true,
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4",
+    "alignment": "Optical alignment for stats; center alignment strictly for the Wagon Wheel SVG."
+  },
+  "surface_strategies": {
+    "cards": "Grid Borders (The 'Technical' Look). 1px solid borders `border-border/50`, dark flat backgrounds `bg-[#0A0A0A]`, with selective glowing linear borders (Tracing Beam) for the active session state.",
+    "headers": "Crystal Glass. `backdrop-blur-xl bg-black/70` with a sharp 1px `border-b border-white/10`.",
+    "panels": "Deep black `#000000` to ensure high contrast against the neon data visualizations."
+  },
+  "interactions_and_motion": {
+    "hover_states": "Crisp, fast transitions. `hover:bg-white/5`, subtle 1px border highlights.",
+    "active_states": "Bright neon green glowing borders or background tints for active selections (e.g., active shot type toggle).",
+    "animations": "Subtle entry fades. Shot lines on the Wagon Wheel should use framer-motion path drawing (`stroke-dasharray` animation) when a shot is logged."
+  },
+  "components": {
+    "stats_dashboard": "Use raw Tailwind CSS grids for modular tiles. Use `tabular-nums` for live data to avoid layout shifting. Glowing green text for active metrics like Strike Rate.",
+    "wagon_wheel_svg": "HTML/SVG hybrid. Pitch in the center, dashed 30-yard circle, labels for field positions (Fine Leg, Square Leg, Mid Wicket, Mid On, Mid Off, Cover, Point, Third Man, Straight). LH/RH toggle flips the labels along the Y-axis.",
+    "shot_logger": "Shadcn-based buttons configured for tactical monochrome with neon active states. Grid layout for runs (0,1,2,3,4,6) strictly matching the color code.",
+    "charts": "Shadcn/Recharts for the Run Distribution bar chart. Bars must be colored exactly according to the `wagon_wheel` run color palette.",
+    "coaching_panel": "AI chat style interface. Distinct dark green tint `bg-[#051A0C]` for AI responses to separate them from user logs.",
+    "live_camera_video": "UI shell only. 16:9 aspect ratio black placeholder `bg-black` with a subtle camera icon, recording red dot, and a 'coming soon' overlay.",
+    "stripe_pricing": "3-tier bento layout (Free, Pro, Academy). The Academy tier is highlighted with the glowing 'Tracing Beam' border.",
+    "data_testids": "MANDATORY on all interactive elements (e.g., `data-testid='shot-type-drive'`, `data-testid='run-4'`, `data-testid='log-shot-btn'`)."
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "style": "Crisp, solid lines, typically 1.5x stroke width."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1595210382266-2d0077c1f541?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxjcmlja2V0JTIwYmF0c21hbiUyMGFjdGlvbnxlbnwwfHx8fDE3ODA5NTgwMTd8MA&ixlib=rb-4.1.0&q=85",
+      "category": "hero_background",
+      "description": "Darkened, moody background of batsman for the auth or landing screen. Use heavy black gradient overlay (bg-black/80)."
+    },
+    {
+      "url": "https://images.pexels.com/photos/32471031/pexels-photo-32471031.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "atmospheric_texture",
+      "description": "Stadium lights at night. Use as a highly blurred backdrop for the subscription tier or profile page."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Build a Hybrid Fullstack PWA using React, Tailwind CSS, and Shadcn UI.",
+    "Strictly follow the color codes for the run values (0=grey,1=cyan,2=green,3=yellow,4=orange,6=purple) across the logger, wagon wheel, and charts.",
+    "Implement the Wagon Wheel as a responsive SVG. The pitch is in the center. Map shot paths radiating outwards: Drive -> Straight/Mid Off/Mid On, Pull -> Mid Wicket/Square Leg, Cut -> Point, Sweep -> Fine Leg/Square Leg, Flick -> Mid Wicket/Fine Leg, Defend -> short lines straight back.",
+    "Ensure 'data-testid' attributes are attached to EVERY button, input, and interactive element.",
+    "Mobile-first is critical. The dashboard tiles, shot logger, and wagon wheel must stack perfectly on mobile phones without horizontal scrolling.",
+    "Implement Shadcn Tabs component for switching between 'Dashboard', 'History', and 'Coach' views.",
+    "Since standard Shadcn fonts like Inter are strictly forbidden here, ensure `JetBrains Mono` and `Space Mono` (or standard monospace) are applied to the `tailwind.config.js` and `index.css` global files.",
+    "PWA support requires standard web app manifest and service worker configuration in the public folder."
+  ]
+}
