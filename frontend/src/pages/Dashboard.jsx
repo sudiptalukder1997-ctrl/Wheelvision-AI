@@ -1,0 +1,249 @@
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { api, shotTypeToAngle } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import WagonWheel from '@/components/WagonWheel';
+import StatsPanel from '@/components/StatsPanel';
+import ShotControls from '@/components/ShotControls';
+import ShotLog from '@/components/ShotLog';
+import RunDistribution from '@/components/RunDistribution';
+import CoachingPanel from '@/components/CoachingPanel';
+import { TID } from '@/constants/testIds';
+import { Plus, Video, Camera, Share2 } from 'lucide-react';
+
+export default function Dashboard() {
+  const { user, checkAuth } = useAuth();
+  const navigate = useNavigate();
+  const [session, setSession] = useState(null);
+  const [shots, setShots] = useState([]);
+  const [batterHand, setBatterHand] = useState('RH');
+  const [shotType, setShotType] = useState('Drive');
+  const [runs, setRuns] = useState(1);
+  const [mode, setMode] = useState('manual');
+  const [filter, setFilter] = useState(null);
+
+  // Auth gate
+  useEffect(() => {
+    if (user === null) {
+      const t = setTimeout(() => { if (!user) navigate('/'); }, 200);
+      return () => clearTimeout(t);
+    }
+  }, [user, navigate]);
+
+  // Load or create most recent session
+  const loadOrCreate = useCallback(async () => {
+    if (!user) return;
+    try {
+      const list = await api.get('/sessions');
+      if (list.data.length > 0) {
+        const s = list.data[0];
+        setSession(s);
+        setShots(s.shots || []);
+        setBatterHand(s.batter_hand || 'RH');
+      } else {
+        const r = await api.post('/sessions', { name: 'Net Session', batter_hand: 'RH' });
+        setSession(r.data);
+        setShots([]);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [user]);
+
+  useEffect(() => { loadOrCreate(); }, [loadOrCreate]);
+
+  const newSession = async () => {
+    try {
+      const r = await api.post('/sessions', { name: `Net Session ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, batter_hand: batterHand });
+      setSession(r.data);
+      setShots([]);
+      toast.success('New session started');
+    } catch {
+      toast.error('Could not create session');
+    }
+  };
+
+  // Update batter hand on server
+  useEffect(() => {
+    if (!session) return;
+    if (session.batter_hand === batterHand) return;
+    api.patch(`/sessions/${session.id}`, { batter_hand: batterHand }).catch(() => {});
+  }, [batterHand, session]);
+
+  const logShot = async (override) => {
+    if (!session) return;
+    const angle = override?.angle ?? shotTypeToAngle(shotType, batterHand);
+    try {
+      const r = await api.post(`/sessions/${session.id}/shots`, {
+        runs,
+        shot_type: shotType,
+        x: 0.5,
+        y: 0.5,
+        angle,
+      });
+      setShots((p) => [...p, r.data]);
+      toast.success(`+${runs} · ${shotType}`);
+    } catch (e) {
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || 'Could not log shot';
+      if (status === 402) {
+        toast.error(detail);
+        navigate('/pricing');
+      } else {
+        toast.error(detail);
+      }
+    }
+  };
+
+  const deleteShot = async (shotId) => {
+    if (!session) return;
+    await api.delete(`/sessions/${session.id}/shots/${shotId}`);
+    setShots((p) => p.filter((s) => s.id !== shotId));
+  };
+
+  const clearAll = async () => {
+    if (!session) return;
+    if (!confirm('Clear all shots in this session?')) return;
+    await api.post(`/sessions/${session.id}/shots/clear`);
+    setShots([]);
+    setSession((s) => ({ ...s, coaching: null }));
+  };
+
+  const onFieldClick = ({ angle }) => {
+    logShot({ angle });
+  };
+
+  const setCoaching = (text) => setSession((s) => ({ ...s, coaching: text }));
+
+  const shareSession = async () => {
+    const total = shots.length;
+    const tr = shots.reduce((a, s) => a + s.runs, 0);
+    const sr = total ? ((tr / total) * 100).toFixed(1) : '0';
+    const text = `WheelVision AI · ${total} balls, ${tr} runs, SR ${sr}`;
+    const url = window.location.origin;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'WheelVision AI', text, url });
+      } else {
+        await navigator.clipboard.writeText(`${text} — ${url}`);
+        toast.success('Copied share text to clipboard');
+      }
+    } catch (_e) { /* ignore share errors */ }
+  };
+
+  const tier = user?.tier || 'free';
+  const freeRemaining = tier === 'free' ? Math.max(0, 10 - shots.length) : Infinity;
+
+  return (
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="rec-dot" />
+          <div className="text-[10px] uppercase tracking-[0.3em] text-primary font-bold">
+            {session?.name || 'LIVE SESSION'}
+          </div>
+          {tier === 'free' && (
+            <span className="ml-2 px-2 py-0.5 rounded border border-primary/30 text-[10px] uppercase tracking-widest text-primary">
+              FREE · {freeRemaining} shots left
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            data-testid={TID.newSessionBtn}
+            onClick={newSession}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-white/10 hover:border-primary/40 text-[11px] font-bold uppercase tracking-widest"
+          >
+            <Plus className="w-3.5 h-3.5" /> New
+          </button>
+          <button
+            data-testid={TID.shareBtn}
+            onClick={shareSession}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-white/10 hover:border-primary/40 text-[11px] font-bold uppercase tracking-widest"
+          >
+            <Share2 className="w-3.5 h-3.5" /> Share
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <StatsPanel shots={shots} />
+
+      {/* Main grid: wheel + controls/log */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 broadcast-card p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold">WAGON WHEEL</div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {filter == null ? 'ALL SHOTS' : `FILTER · ${filter}s`}
+            </div>
+          </div>
+          <WagonWheel shots={shots} batterHand={batterHand} filter={filter} onFieldClick={onFieldClick} selectedShotType={shotType} />
+        </div>
+
+        <div className="space-y-4">
+          <ShotControls
+            shotType={shotType}
+            setShotType={setShotType}
+            runs={runs}
+            setRuns={setRuns}
+            mode={mode}
+            setMode={setMode}
+            batterHand={batterHand}
+            setBatterHand={setBatterHand}
+            onLogShot={() => logShot()}
+            onClear={clearAll}
+            canLog={!!session}
+          />
+          <RunDistribution shots={shots} filter={filter} setFilter={setFilter} />
+        </div>
+      </div>
+
+      {/* Shot log + Coaching */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ShotLog shots={shots} onDelete={deleteShot} />
+        <CoachingPanel session={session} shots={shots} tier={tier} onUpdated={setCoaching} />
+      </div>
+
+      {/* Coming-soon shells */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="broadcast-card p-3 sm:p-4 relative overflow-hidden">
+          <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold mb-2">VIDEO UPLOAD · MOVENET</div>
+          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative">
+            <Video className="w-10 h-10 text-muted-foreground" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="px-3 py-1.5 rounded bg-primary/20 border border-primary/40 text-[10px] uppercase tracking-widest text-primary font-bold">
+                Coming in v2 · MoveNet auto-detection
+              </div>
+            </div>
+          </div>
+          <button data-testid={TID.uploadVideoBtn} disabled className="mt-3 w-full py-2 rounded border border-white/10 text-xs uppercase tracking-widest text-muted-foreground opacity-60">
+            Upload video (1–3 min)
+          </button>
+        </div>
+        <div className="broadcast-card p-3 sm:p-4">
+          <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold mb-2">LIVE CAMERA · POSE DETECT</div>
+          <div className="aspect-video bg-black rounded border border-white/10 flex items-center justify-center relative">
+            <Camera className="w-10 h-10 text-muted-foreground" />
+            <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-widest text-red-400">
+              <div className="rec-dot" /> REC
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="px-3 py-1.5 rounded bg-primary/20 border border-primary/40 text-[10px] uppercase tracking-widest text-primary font-bold">
+                Coming in v2 · live swing detection
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 text-[10px] text-muted-foreground">
+            Tip: film from the side, full body in frame, 1–2 minutes per spell.
+          </div>
+          <button data-testid={TID.liveCameraBtn} disabled className="mt-2 w-full py-2 rounded border border-white/10 text-xs uppercase tracking-widest text-muted-foreground opacity-60">
+            Start live camera
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
