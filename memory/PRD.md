@@ -38,9 +38,17 @@ DONE:
 - PWA: manifest.json + service worker + icons.
 - Sign in/out flow via Emergent OAuth.
 
-DEFERRED (Phase 2):
-- MoveNet client-side video shot detection.
-- Live camera mode w/ swing detection.
+## Implementation Status (Phase 2 — Biomechanical AI Upgrade, Feb 2026)
+DONE:
+- MoveNet Thunder pose detection lazy-loaded via @tensorflow-models/pose-detection.
+- Biomechanics engine (/lib/biomechanics.js): computeFeatures (wrist_angle, elbow_angle, shoulder_rotation, body_lean, keypoint_confidence), computeMotion (wrist velocity + upward trajectory), detectSwing (15° + 8 frames + decel), classifyShot (front/back foot + wrist_angle → shot + wagon angle + runs), finalConfidence + confidenceTier (green/amber/red).
+- LiveCamera: skeleton overlay, ghost silhouette guide, PERFECT POSITION readiness, sensitivity slider, vibration on detect, 90%+ auto-confirm, 4-second confirmation card with CORRECT/EDIT, EditShotSheet quick corrections, MoveNet Thunder via WebGL.
+- VideoAnalyzer: upload 1–3 min clip, frame-sampling (stride 5), per-shot freeze frames with skeleton + angles, auto-triggered biomech AI coaching after analysis.
+- ConfirmationCard with confidence traffic light + 4-second auto-confirm progress.
+- Backend: /api/profile/biomech, /api/predictions/log (recalcs personal_thresholds every 10 corrections), /api/sessions/{id}/coaching/biomech (Claude Sonnet biomech coaching prompt with 5 sections: technical assessment, biomechanical weakness, bowling attack threat, two drills, batting style profile).
+- Dashboard: AI accuracy badge ("AI X% · Y preds"), Pro-gated entry points to LiveCamera and VideoAnalyzer (Free users redirect to /pricing).
+
+DEFERRED (Phase 3):
 - Multi-language (HI/UR/SI/TA).
 - PDF report generation.
 - Progress graphs over time.
