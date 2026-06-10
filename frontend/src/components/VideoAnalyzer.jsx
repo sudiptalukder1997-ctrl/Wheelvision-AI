@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Upload, X, Sparkles, Loader2, Share2, Trophy } from 'lucide-react';
 
-export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName }) {
+export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName, defaultCameraView = 'side' }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -17,9 +17,10 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   const [aiBusy, setAiBusy] = useState(false);
   const [sharingId, setSharingId] = useState(null);
   const [bestSixBusy, setBestSixBusy] = useState(false);
+  const [cameraView, setCameraView] = useState(defaultCameraView === 'front' ? 'front' : 'side');
 
   const { analyze, reset: resetAnalysis, progress, statusMsg, detected, analyzing } = useVideoAnalysis({
-    videoRef, canvasRef, batterHand, personalThresholds,
+    videoRef, canvasRef, batterHand, personalThresholds, cameraView,
   });
 
   const bestSix = useMemo(() => {
@@ -169,8 +170,13 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
             <Upload className="w-10 h-10 text-primary mx-auto" />
             <div className="font-display font-bold text-xl tracking-tight">Upload a batting clip</div>
             <div className="text-xs text-muted-foreground max-w-sm mx-auto">
-              Ideal length 1–3 minutes · side-on view · full body in frame.
+              Ideal length 1–3 minutes · {cameraView === 'front' ? 'camera behind the bowler' : 'side-on'} · full body in frame.
             </div>
+            <ViewToggle value={cameraView} onChange={async (v) => {
+              setCameraView(v);
+              try { await api.post('/profile/camera-view', { view: v }); }
+              catch (err) { console.warn('persist camera view failed', err); }
+            }} />
             <input ref={fileInputRef} type="file" accept="video/*" onChange={handleFile} className="hidden" data-testid="video-file-input" />
             <button
               data-testid="select-video-btn"
@@ -310,6 +316,30 @@ function CoachingReport({ coaching, busy }) {
       ) : (
         <div className="text-xs text-muted-foreground">Generating biomechanical coaching report…</div>
       )}
+    </div>
+  );
+}
+
+function ViewToggle({ value, onChange }) {
+  return (
+    <div className="inline-flex items-center gap-2 mx-auto">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">VIEW</span>
+      <div className="flex items-center rounded border border-white/15 overflow-hidden">
+        <button
+          data-testid="video-view-side"
+          onClick={() => onChange('side')}
+          className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold ${value === 'side' ? 'bg-primary text-black' : 'text-foreground hover:bg-white/5'}`}
+        >
+          SIDE-ON
+        </button>
+        <button
+          data-testid="video-view-front"
+          onClick={() => onChange('front')}
+          className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold ${value === 'front' ? 'bg-primary text-black' : 'text-foreground hover:bg-white/5'}`}
+        >
+          FRONT-ON
+        </button>
+      </div>
     </div>
   );
 }

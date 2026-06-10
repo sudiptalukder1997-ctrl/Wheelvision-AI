@@ -4,7 +4,7 @@ import { computeFeatures, detectSwing, classifyShot, finalConfidence } from '@/l
 
 // Custom hook encapsulating video file -> frame-by-frame MoveNet pose analysis.
 // Caller passes refs to a <video> and <canvas>. Returns analyze(file, options).
-export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, personalThresholds }) {
+export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, personalThresholds, cameraView = 'side' }) {
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState('');
   const [detected, setDetected] = useState([]);
@@ -100,7 +100,10 @@ export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, pers
               body_lean: features.body_lean,
               velocity: swing.motion.wrist_velocity,
               upward: swing.motion.upward,
+              trajectory: swing.motion.trajectory,
               personalThresholds,
+              cameraView,
+              batterHand,
             });
             const conf = finalConfidence(features.keypoint_confidence, classified.confidence, personalThresholds && Object.keys(personalThresholds).length ? 0.2 : 0);
             const freezeUrl = captureFreezeFrame(video, pose, classified, conf, features);
@@ -125,7 +128,7 @@ export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, pers
     setAnalyzing(false);
     URL.revokeObjectURL(url);
     return found;
-  }, [videoRef, canvasRef, batterHand, personalThresholds, captureFreezeFrame]);
+  }, [videoRef, canvasRef, batterHand, personalThresholds, cameraView, captureFreezeFrame]);
 
   const cancel = useCallback(() => { cancelRef.current = true; }, []);
 

@@ -12,7 +12,7 @@ import CameraSetupGuide from '@/components/CameraSetupGuide';
 const HISTORY_SIZE = 12;
 const COOLDOWN_MS = 1500;
 
-export default function LiveCamera({ open, onClose, session, batterHand, onShotLogged, personalThresholds, aiAccuracy }) {
+export default function LiveCamera({ open, onClose, session, batterHand, onShotLogged, personalThresholds, aiAccuracy, defaultCameraView = 'side' }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const stateRef = useRef({ running: false, history: [], lastDetectionAt: 0, lastPrediction: null });
@@ -24,6 +24,7 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
   const [pendingPrediction, setPendingPrediction] = useState(null);
   const [editing, setEditing] = useState(false);
   const [sensitivity, setSensitivity] = useState(4.0);
+  const [cameraView, setCameraView] = useState(defaultCameraView === 'front' ? 'front' : 'side');
 
   const stopLoop = useCallback(() => {
     stateRef.current.running = false;
@@ -122,7 +123,10 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
             body_lean: features.body_lean,
             velocity: swing.motion.wrist_velocity,
             upward: swing.motion.upward,
+            trajectory: swing.motion.trajectory,
             personalThresholds,
+            cameraView,
+            batterHand,
           });
           const conf = finalConfidence(features.keypoint_confidence, classified.confidence, personalThresholds && Object.keys(personalThresholds).length ? 0.2 : 0);
           const prediction = {
@@ -216,7 +220,12 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
         {phase === 'setup' && (
           <div className="absolute inset-0 overflow-y-auto p-4 sm:p-6 flex items-center justify-center">
             <div className="w-full max-w-xl">
-              <CameraSetupGuide title="LIVE CAMERA SETUP" onContinue={startCamera} onCancel={onClose} />
+              <CameraSetupGuide
+                title="LIVE CAMERA SETUP"
+                initialView={cameraView}
+                onContinue={(chosenView) => { setCameraView(chosenView); startCamera(); }}
+                onCancel={onClose}
+              />
             </div>
           </div>
         )}
@@ -252,6 +261,13 @@ export default function LiveCamera({ open, onClose, session, batterHand, onShotL
                   }}
                 >
                   {framing.ready ? 'PERFECT POSITION — READY TO ANALYSE' : `FRAMING ${Math.round(framing.score * 100)}% · ${framing.count}/17 keypoints`}
+                </div>
+                {/* camera view indicator */}
+                <div
+                  data-testid="live-view-indicator"
+                  className="absolute top-3 left-3 px-2 py-1 rounded bg-black/60 border border-primary/40 text-[10px] uppercase tracking-widest text-primary font-bold"
+                >
+                  VIEW · {cameraView === 'front' ? 'FRONT-ON' : 'SIDE-ON'}
                 </div>
                 {/* sensitivity slider */}
                 <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs bg-black/60 rounded p-2 border border-white/10">

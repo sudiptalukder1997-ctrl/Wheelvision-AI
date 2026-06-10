@@ -201,7 +201,14 @@ const SHOT_MAP = [
   { name: 'Defend',         minA: -20, maxA: 20, foot: 'any',   wagon: 0,    high: false, up: false },
 ];
 
-export function classifyShot({ wrist_angle, elbow_angle, body_lean, velocity, upward, personalThresholds }) {
+export function classifyShot({ wrist_angle, elbow_angle, body_lean, velocity, upward, trajectory, personalThresholds, cameraView = 'side', batterHand = 'RH' }) {
+  // FRONT-ON view: the swing direction on screen maps directly to the wagon-wheel angle.
+  // For RH batter: screen-right (positive dx in trajectory) is leg side; left is off side.
+  // For LH batter: flipped.
+  if (cameraView === 'front') {
+    return classifyFrontOn({ trajectory, velocity, upward, elbow_angle, body_lean, batterHand });
+  }
+  // SIDE-ON view: existing wrist-angle based classifier
   const wa = normAngle(wrist_angle);
   const footPosition = body_lean > 8 ? 'front' : body_lean < -4 ? 'back' : 'any';
 
@@ -251,6 +258,71 @@ export function classifyShot({ wrist_angle, elbow_angle, body_lean, velocity, up
     shotType: best?.name || 'Unknown',
     wagonAngle: best?.wagon ?? 0,
     confidence: Math.round(confidence),
+    runs,
+    footPosition,
+    upward,
+  };
+}
+
+// Front-on classifier — uses screen-space trajectory as the primary direction signal.
+function classifyFrontOn({ trajectory, velocity, upward, elbow_angle, body_lean, batterHand }) {
+  // Our trajectory convention: 0° = up, +90° = right (screen), -90° = left (screen).
+  // RH batter front-on: screen-right = leg side (positive wagon), screen-left = off side (negative wagon).
+  // LH batter: mirror — flip sign of trajectory.
+  const flip = batterHand === 'LH' ? -1 : 1;
+  const t = ((trajectory ?? 0) * flip);
+  // Wagon angle: clamp to [-180,180]
+  let wagon = t;
+  if (wagon > 180) wagon -= 360;
+  if (wagon < -180) wagon += 360;
+
+  // Pick shot type from wagon zone + foot + upward
+  const footPosition = body_lean > 8 ? 'front' : body_lean < -4 ? 'back' : 'any';
+  let shotType = 'Drive';
+  const absW = Math.abs(wagon);
+
+  if (upward && absW > 60) {
+    shotType = wagon > 0 ? 'Hook' : 'Lofted Off';
+  } else if (upward) {
+    shotType = wagon > 0 ? 'Lofted On' : 'Lofted Off';
+  } else if (absW < 25) {
+    shotType = footPosition === 'back' ? 'Defend' : 'Straight Drive';
+  } else if (wagon >= 25 && wagon < 65) {
+    // leg side in front of square
+    shotType = footPosition === 'front' ? 'On Drive' : 'Flick';
+  } else if (wagon >= 65 && wagon < 120) {
+    // square leg
+    shotType = footPosition === 'back' ? 'Pull' : 'Flick';
+  } else if (wagon >= 120) {
+    shotType = 'Glance';
+  } else if (wagon <= -25 && wagon > -65) {
+    shotType = footPosition === 'front' ? 'Cover Drive' : 'Off Drive';
+  } else if (wagon <= -65 && wagon > -120) {
+    shotType = footPosition === 'back' ? 'Square Cut' : 'Cut';
+  } else if (wagon <= -120) {
+    shotType = 'Cut';
+  }
+
+  // Runs from velocity (same buckets as side-on)
+  let runs = 0;
+  if (velocity > 18) runs = upward ? 6 : 4;
+  else if (velocity > 12) runs = 3;
+  else if (velocity > 7) runs = 2;
+  else if (velocity > 3) runs = 1;
+  else runs = 0;
+  if ((shotType === 'Pull' || shotType === 'Hook') && runs === 3) runs = 4;
+  if (shotType === 'Defend' && runs < 1) runs = 0;
+
+  // Confidence: stronger when motion is clearly horizontal (definitive direction)
+  // and weaker when nearly vertical / tiny.
+  const directional = Math.min(1, absW / 90);
+  const speedy = Math.min(1, velocity / 12);
+  const conf = Math.round((directional * 0.55 + speedy * 0.45) * 100);
+
+  return {
+    shotType,
+    wagonAngle: Math.round(wagon),
+    confidence: Math.max(20, Math.min(100, conf)),
     runs,
     footPosition,
     upward,

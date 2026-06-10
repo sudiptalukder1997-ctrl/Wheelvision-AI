@@ -290,6 +290,7 @@ export default function Dashboard() {
         onShotLogged={onAutoShotLogged}
         personalThresholds={profile.personal_thresholds}
         aiAccuracy={profile.ai_accuracy}
+        defaultCameraView={profile.camera_view || 'side'}
       />
       <VideoAnalyzer
         open={videoOpen}
@@ -299,6 +300,7 @@ export default function Dashboard() {
         onAnalysisComplete={() => { loadOrCreate(); refreshProfile(); }}
         personalThresholds={profile.personal_thresholds}
         userName={user?.name}
+        defaultCameraView={profile.camera_view || 'side'}
       />
     </div>
   );

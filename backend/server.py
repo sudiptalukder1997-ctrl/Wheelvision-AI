@@ -552,6 +552,7 @@ async def get_biomech_profile(request: Request):
     accuracy = (correct / total * 100.0) if total else 0.0
     profile = user.get('biomech_profile') or {}
     thresholds = profile.get('personal_thresholds') or {}
+    camera_view = profile.get('camera_view') or 'side'
     return {
         "personal_thresholds": thresholds,
         "default_thresholds": DEFAULT_THRESHOLDS,
@@ -560,7 +561,22 @@ async def get_biomech_profile(request: Request):
         "corrections": corr_count,
         "ai_accuracy": round(accuracy, 1),
         "samples_needed_for_next_recalc": max(0, 10 - (corr_count % 10)) if corr_count > 0 else 10,
+        "camera_view": camera_view,
     }
+
+class CameraViewRequest(BaseModel):
+    view: str  # 'side' | 'front'
+
+@api_router.post("/profile/camera-view")
+async def set_camera_view(body: CameraViewRequest, request: Request):
+    user = await require_user(request)
+    if body.view not in ("side", "front"):
+        raise HTTPException(400, "view must be 'side' or 'front'")
+    await db.users.update_one(
+        {"user_id": user['user_id']},
+        {"$set": {"biomech_profile.camera_view": body.view}},
+    )
+    return {"camera_view": body.view}
 
 @api_router.post("/predictions/log")
 async def log_prediction(payload: PredictionLog, request: Request):
