@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { confidenceTier } from '@/lib/biomechanics';
 import logShotAndPrediction from '@/lib/predictionApi';
 import useVideoAnalysis from '@/lib/useVideoAnalysis';
+import { composeSingleCard, composeBestSixGrid, shareImageBlob } from '@/lib/composeShareCard';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Upload, X, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, X, Sparkles, Loader2, Share2, Trophy } from 'lucide-react';
 
-export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds }) {
+export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -14,10 +15,66 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   const [file, setFile] = useState(null);
   const [aiCoaching, setAiCoaching] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [sharingId, setSharingId] = useState(null);
+  const [bestSixBusy, setBestSixBusy] = useState(false);
 
   const { analyze, reset: resetAnalysis, progress, statusMsg, detected, analyzing } = useVideoAnalysis({
     videoRef, canvasRef, batterHand, personalThresholds,
   });
+
+  const bestSix = useMemo(() => {
+    return [...detected]
+      .sort((a, b) => (b.runs * 1000 + b.confidence) - (a.runs * 1000 + a.confidence))
+      .slice(0, 6);
+  }, [detected]);
+
+  const sessionStats = useMemo(() => {
+    const total = detected.length;
+    const runs = detected.reduce((a, s) => a + (s.runs || 0), 0);
+    const fours = detected.filter((s) => s.runs === 4).length;
+    const sixes = detected.filter((s) => s.runs === 6).length;
+    const sr = total ? Math.round((runs / total) * 100) : 0;
+    return { balls: total, runs, sr, fours, sixes };
+  }, [detected]);
+
+  const shareSingleShot = useCallback(async (shot) => {
+    setSharingId(shot.id);
+    try {
+      const blob = await composeSingleCard(shot, { batterName: userName || 'WHEELVISION AI' });
+      if (!blob) throw new Error('compose failed');
+      const result = await shareImageBlob(blob, {
+        filename: `wheelvision-${shot.shotType.replace(/\s+/g, '-').toLowerCase()}-${shot.runs}.jpg`,
+        text: `${shot.shotType} for ${shot.runs} · ${shot.confidence}% AI confidence · WheelVision AI`,
+      });
+      if (result === 'downloaded') toast.success('Image downloaded · share to Instagram from your gallery');
+      else if (result === 'shared') toast.success('Shared!');
+    } catch (err) {
+      console.error('share single failed', err);
+      toast.error('Could not generate image');
+    } finally {
+      setSharingId(null);
+    }
+  }, [userName]);
+
+  const shareBestSix = useCallback(async () => {
+    if (bestSix.length === 0) { toast.error('No shots to share yet'); return; }
+    setBestSixBusy(true);
+    try {
+      const blob = await composeBestSixGrid(bestSix, { batterName: userName || 'WHEELVISION AI', sessionStats });
+      if (!blob) throw new Error('compose failed');
+      const result = await shareImageBlob(blob, {
+        filename: `wheelvision-best-six-${Date.now()}.jpg`,
+        text: `My WheelVision AI highlights · ${sessionStats.runs} runs · ${sessionStats.fours} fours · ${sessionStats.sixes} sixes`,
+      });
+      if (result === 'downloaded') toast.success('Highlights image downloaded · share to Instagram from your gallery');
+      else if (result === 'shared') toast.success('Highlights shared!');
+    } catch (err) {
+      console.error('share best six failed', err);
+      toast.error('Could not generate highlights');
+    } finally {
+      setBestSixBusy(false);
+    }
+  }, [bestSix, sessionStats, userName]);
 
   const reset = useCallback(() => {
     setFile(null); setAiCoaching(null);
@@ -158,7 +215,15 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
 
         {/* detected shots gallery */}
         {detected.length > 0 && (
-          <DetectedShotsGallery shots={detected} />
+          <DetectedShotsGallery
+            shots={detected}
+            onShareShot={shareSingleShot}
+            sharingId={sharingId}
+            onShareBestSix={shareBestSix}
+            bestSixBusy={bestSixBusy}
+            bestSixCount={bestSix.length}
+            sessionStats={sessionStats}
+          />
         )}
 
         {/* AI coaching report */}
@@ -170,20 +235,48 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   );
 }
 
-function DetectedShotsGallery({ shots }) {
+function DetectedShotsGallery({ shots, onShareShot, sharingId, onShareBestSix, bestSixBusy, bestSixCount, sessionStats }) {
   return (
     <div className="space-y-2">
-      <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold">DETECTED SHOTS · {shots.length}</div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-bold">DETECTED SHOTS · {shots.length}</div>
+        <button
+          data-testid="share-best-six-btn"
+          onClick={onShareBestSix}
+          disabled={bestSixBusy || bestSixCount === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-black font-black uppercase tracking-widest text-[11px] hover:bg-primary/90 disabled:opacity-40 glow-border"
+        >
+          {bestSixBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trophy className="w-3.5 h-3.5" />}
+          {bestSixBusy ? 'BUILDING…' : `SHARE BEST SIX (${Math.min(6, bestSixCount)})`}
+        </button>
+      </div>
+      {sessionStats && (
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          Session · {sessionStats.balls} balls · <span className="text-primary font-bold">{sessionStats.runs} runs</span> · SR {sessionStats.sr} · {sessionStats.fours}×4 · {sessionStats.sixes}×6
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {shots.map((d) => {
           const ct = confidenceTier(d.confidence);
+          const isSharing = sharingId === d.id;
           return (
-            <div key={d.id} className="broadcast-card overflow-hidden" data-testid={`detected-shot-${d.id}`}>
-              {d.freezeUrl ? (
-                <img src={d.freezeUrl} alt="freeze" className="w-full aspect-video object-cover" />
-              ) : (
-                <div className="w-full aspect-video bg-black" />
-              )}
+            <div key={d.id} className="broadcast-card overflow-hidden group" data-testid={`detected-shot-${d.id}`}>
+              <div className="relative">
+                {d.freezeUrl ? (
+                  <img src={d.freezeUrl} alt="freeze" className="w-full aspect-video object-cover" />
+                ) : (
+                  <div className="w-full aspect-video bg-black" />
+                )}
+                <button
+                  data-testid={`share-shot-${d.id}`}
+                  onClick={() => onShareShot?.(d)}
+                  disabled={isSharing}
+                  className="absolute top-2 right-2 px-2 py-1 rounded bg-black/80 border border-primary/40 text-primary text-[10px] uppercase tracking-widest font-bold flex items-center gap-1 hover:bg-primary hover:text-black transition-colors disabled:opacity-50"
+                >
+                  {isSharing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Share2 className="w-3 h-3" />}
+                  {isSharing ? '…' : 'SHARE'}
+                </button>
+              </div>
               <div className="p-2.5 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: ct.color }}>{ct.label}</div>

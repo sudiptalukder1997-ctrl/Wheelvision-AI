@@ -298,6 +298,7 @@ export default function Dashboard() {
         batterHand={batterHand}
         onAnalysisComplete={() => { loadOrCreate(); refreshProfile(); }}
         personalThresholds={profile.personal_thresholds}
+        userName={user?.name}
       />
     </div>
   );
