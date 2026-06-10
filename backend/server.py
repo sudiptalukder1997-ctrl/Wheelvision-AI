@@ -25,6 +25,7 @@ db = client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', 'sk_test_emergent')
+ADMIN_EMAIL = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()
 
 app = FastAPI(title="WheelVision AI API")
 api_router = APIRouter(prefix="/api")
@@ -118,6 +119,20 @@ async def require_user(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
+async def require_owner(request: Request) -> Dict[str, Any]:
+    user = await require_user(request)
+    if user.get('role') != 'owner':
+        raise HTTPException(status_code=403, detail="Owner role required")
+    return user
+
+def effective_tier(user: Dict[str, Any]) -> str:
+    """The tier a user is currently SEEING the app as. Impersonation overrides real tier."""
+    return (user.get('impersonate_tier') or user.get('tier') or 'free')
+
+def has_owner_bypass(user: Dict[str, Any]) -> bool:
+    """Owners get free access to everything, but only when NOT impersonating another tier."""
+    return user.get('role') == 'owner' and not user.get('impersonate_tier')
+
 # ===================== Auth =====================
 @api_router.post("/auth/session")
 async def auth_session(request: Request, response: Response):
@@ -141,9 +156,14 @@ async def auth_session(request: Request, response: Response):
     session_token = data['session_token']
 
     existing = await db.users.find_one({"email": email}, {"_id": 0})
+    is_owner_email = ADMIN_EMAIL and email.strip().lower() == ADMIN_EMAIL
     if existing:
         user_id = existing['user_id']
-        await db.users.update_one({"user_id": user_id}, {"$set": {"name": name, "picture": picture}})
+        update_set = {"name": name, "picture": picture}
+        # Promote to owner if email matches ADMIN_EMAIL (idempotent).
+        if is_owner_email and existing.get('role') != 'owner':
+            update_set['role'] = 'owner'
+        await db.users.update_one({"user_id": user_id}, {"$set": update_set})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
@@ -152,6 +172,8 @@ async def auth_session(request: Request, response: Response):
             "name": name,
             "picture": picture,
             "tier": "free",
+            "role": "owner" if is_owner_email else "user",
+            "impersonate_tier": None,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -193,6 +215,78 @@ async def auth_logout(request: Request, response: Response):
         await db.user_sessions.delete_one({"session_token": session_token})
     response.delete_cookie(key="session_token", path="/", samesite="none", secure=True)
     return {"ok": True}
+
+# ===================== Admin (Owner-only) =====================
+class AdminUserUpdate(BaseModel):
+    tier: Optional[str] = None     # 'free' | 'pro' | 'academy'
+    role: Optional[str] = None     # 'user' | 'owner'
+
+class ImpersonateRequest(BaseModel):
+    tier: Optional[str] = None     # None to clear; 'free' | 'pro' | 'academy'
+
+VALID_TIERS = {"free", "pro", "academy"}
+VALID_ROLES = {"user", "owner"}
+
+@api_router.get("/admin/users")
+async def admin_list_users(request: Request):
+    await require_owner(request)
+    docs = await db.users.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Add session count per user for visibility
+    user_ids = [d['user_id'] for d in docs]
+    if user_ids:
+        pipeline = [{"$match": {"user_id": {"$in": user_ids}}}, {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}]
+        counts = await db.sessions.aggregate(pipeline).to_list(500)
+        count_map = {c['_id']: c['count'] for c in counts}
+    else:
+        count_map = {}
+    for d in docs:
+        d['session_count'] = count_map.get(d['user_id'], 0)
+    return docs
+
+@api_router.patch("/admin/users/{user_id}")
+async def admin_update_user(user_id: str, body: AdminUserUpdate, request: Request):
+    owner = await require_owner(request)
+    updates: Dict[str, Any] = {}
+    if body.tier is not None:
+        if body.tier not in VALID_TIERS:
+            raise HTTPException(400, f"tier must be one of {sorted(VALID_TIERS)}")
+        updates['tier'] = body.tier
+    if body.role is not None:
+        if body.role not in VALID_ROLES:
+            raise HTTPException(400, f"role must be one of {sorted(VALID_ROLES)}")
+        # Don't allow stripping owner role from yourself accidentally
+        if body.role != 'owner' and user_id == owner['user_id']:
+            raise HTTPException(400, "Cannot remove owner role from your own account here.")
+        updates['role'] = body.role
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    result = await db.users.update_one({"user_id": user_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(404, "User not found")
+    doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return doc
+
+@api_router.post("/admin/impersonate")
+async def admin_impersonate(body: ImpersonateRequest, request: Request):
+    owner = await require_owner(request)
+    if body.tier is not None and body.tier not in VALID_TIERS:
+        raise HTTPException(400, f"tier must be one of {sorted(VALID_TIERS)} or null to clear")
+    await db.users.update_one({"user_id": owner['user_id']}, {"$set": {"impersonate_tier": body.tier}})
+    doc = await db.users.find_one({"user_id": owner['user_id']}, {"_id": 0})
+    return doc
+
+@api_router.get("/admin/stats")
+async def admin_stats(request: Request):
+    await require_owner(request)
+    return {
+        "users": await db.users.count_documents({}),
+        "owners": await db.users.count_documents({"role": "owner"}),
+        "pro_users": await db.users.count_documents({"tier": "pro"}),
+        "academy_users": await db.users.count_documents({"tier": "academy"}),
+        "sessions": await db.sessions.count_documents({}),
+        "predictions": await db.predictions.count_documents({}),
+        "transactions": await db.payment_transactions.count_documents({"payment_status": "paid"}),
+    }
 
 # ===================== Sessions =====================
 @api_router.post("/sessions")
@@ -241,12 +335,11 @@ async def delete_session(session_id: str, request: Request):
 @api_router.post("/sessions/{session_id}/shots")
 async def add_shot(session_id: str, req: AddShotRequest, request: Request):
     user = await require_user(request)
-    # Enforce free tier limit (10 shots) server-side
     sess = await db.sessions.find_one({"id": session_id, "user_id": user['user_id']}, {"_id": 0})
     if not sess:
         raise HTTPException(404, "Session not found")
-    tier = user.get('tier', 'free')
-    if tier == 'free' and len(sess.get('shots', [])) >= 10:
+    # Owner bypass — unless impersonating a paying tier (then we want to feel the limits).
+    if not has_owner_bypass(user) and effective_tier(user) == 'free' and len(sess.get('shots', [])) >= 10:
         raise HTTPException(402, "Free tier limit: 10 shots per session. Upgrade to Pro for unlimited shots.")
     shot = Shot(
         runs=req.runs,
@@ -283,7 +376,7 @@ async def clear_shots(session_id: str, request: Request):
 @api_router.post("/sessions/{session_id}/coaching")
 async def analyze_session(session_id: str, request: Request):
     user = await require_user(request)
-    if user.get('tier', 'free') == 'free':
+    if not has_owner_bypass(user) and effective_tier(user) == 'free':
         raise HTTPException(402, "AI Coaching is a Pro feature. Upgrade to unlock.")
     sess = await db.sessions.find_one({"id": session_id, "user_id": user['user_id']}, {"_id": 0})
     if not sess:
@@ -509,7 +602,7 @@ async def log_prediction(payload: PredictionLog, request: Request):
 @api_router.post("/sessions/{session_id}/coaching/biomech")
 async def biomech_coaching(session_id: str, request: Request):
     user = await require_user(request)
-    if user.get('tier', 'free') == 'free':
+    if not has_owner_bypass(user) and effective_tier(user) == 'free':
         raise HTTPException(402, "Biomechanical coaching is a Pro feature.")
     sess = await db.sessions.find_one({"id": session_id, "user_id": user['user_id']}, {"_id": 0})
     if not sess:

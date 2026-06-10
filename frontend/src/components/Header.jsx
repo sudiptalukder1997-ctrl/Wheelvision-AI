@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { TID } from '@/constants/testIds';
 import { Button } from '@/components/ui/button';
-import { Crown, LogOut, Activity, History, Users, LogIn } from 'lucide-react';
+import { Crown, LogOut, Activity, History, Users, LogIn, Shield } from 'lucide-react';
 
 function NavBtn({ to, testid, icon: Icon, active, navigate, children }) {
   return (
@@ -56,14 +56,26 @@ export default function Header() {
             <NavBtn to="/history" testid={TID.navHistory} icon={History} active={path === '/history'} navigate={navigate}>History</NavBtn>
             <NavBtn to="/coach" testid={TID.navCoach} icon={Users} active={path === '/coach'} navigate={navigate}>Coach</NavBtn>
             <NavBtn to="/pricing" testid={TID.navPricing} icon={Crown} active={path === '/pricing'} navigate={navigate}>Tiers</NavBtn>
+            {user.role === 'owner' && (
+              <NavBtn to="/admin" testid="nav-admin" icon={Shield} active={path === '/admin'} navigate={navigate}>Admin</NavBtn>
+            )}
           </nav>
         )}
 
         {user ? (
           <div className="flex items-center gap-2 pl-2 ml-1 border-l border-white/10">
             <div className="hidden sm:flex flex-col items-end leading-tight">
-              <div className="text-xs font-bold text-foreground">{user.name?.split(' ')[0]}</div>
-              <div className="text-[10px] uppercase tracking-widest text-primary">{user.tier || 'free'}</div>
+              <div className="text-xs font-bold text-foreground flex items-center gap-1">
+                {user.role === 'owner' && (
+                  <span data-testid="owner-badge" className="px-1.5 py-0.5 rounded bg-primary text-black text-[9px] uppercase tracking-[0.2em] font-black flex items-center gap-0.5">
+                    <Shield className="w-2.5 h-2.5" /> OWNER
+                  </span>
+                )}
+                {user.name?.split(' ')[0]}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-primary">
+                {user.impersonate_tier ? `acting as ${user.impersonate_tier}` : (user.tier || 'free')}
+              </div>
             </div>
             {user.picture ? (
               <img src={user.picture} alt="" className="w-8 h-8 rounded-full border border-primary/40" />
