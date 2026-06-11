@@ -447,5 +447,3 @@ function formatTime(s) {
   const r = Math.floor(s % 60);
   return `${m}:${r.toString().padStart(2, '0')}`;
 }
-`;
-}
