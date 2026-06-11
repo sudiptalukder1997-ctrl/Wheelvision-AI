@@ -6,7 +6,7 @@ import { computeFeatures, detectSwing, classifyShot, finalConfidence } from '@/l
 // Returns analyze(file, opts) -> { shots, qualityCheck, perMinute, durationSec }.
 // IMPORTANT: this hook NO LONGER auto-persists shots. The caller must commit
 // them after the manual review screen.
-export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, personalThresholds, cameraView = 'side' }) {
+export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, personalThresholds, cameraView = 'side', minVelocityThreshold = 0 }) {
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState('');
   const [detected, setDetected] = useState([]);
@@ -113,6 +113,8 @@ export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, pers
   }, [cameraView]);
 
   const analyze = useCallback(async (file, { frameStride = 5, fps = 30, historySize = 20, edgeBufferSec = 2, minGapSec = 3, velocityThreshold = 12.0 } = {}) => {
+    // Personalise the velocity threshold using the user's learned floor from rejected detections.
+    const effectiveThreshold = Math.max(velocityThreshold, minVelocityThreshold || 0);
     const video = videoRef.current;
     if (!file || !video) return { shots: [], qualityCheck: null, perMinute: 0, durationSec: 0 };
     setAnalyzing(true);
@@ -184,7 +186,7 @@ export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, pers
         if (history.length > historySize) history.shift();
         // min 3-second gap between detected shots
         if (t - lastDetectT >= minGapSec) {
-          const swing = detectSwing(history, velocityThreshold);
+          const swing = detectSwing(history, effectiveThreshold);
           if (swing) {
             const classified = classifyShot({
               wrist_angle: features.wrist_angle,
@@ -223,7 +225,7 @@ export default function useVideoAnalysis({ videoRef, canvasRef, batterHand, pers
     setAnalyzing(false);
     URL.revokeObjectURL(url);
     return { shots: found, qualityCheck, perMinute, durationSec: duration };
-  }, [videoRef, canvasRef, batterHand, personalThresholds, cameraView, captureFreezeFrame, runQualityCheck]);
+  }, [videoRef, canvasRef, batterHand, personalThresholds, cameraView, minVelocityThreshold, captureFreezeFrame, runQualityCheck]);
 
   const cancel = useCallback(() => { cancelRef.current = true; }, []);
 

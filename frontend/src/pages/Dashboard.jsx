@@ -301,6 +301,7 @@ export default function Dashboard() {
         personalThresholds={profile.personal_thresholds}
         userName={user?.name}
         defaultCameraView={profile.camera_view || 'side'}
+        minVelocityThreshold={profile.min_velocity_threshold || 0}
       />
     </div>
   );

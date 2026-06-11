@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Upload, X, Sparkles, Loader2, Share2, Trophy, AlertTriangle, Camera } from 'lucide-react';
 
-export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName, defaultCameraView = 'side' }) {
+export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName, defaultCameraView = 'side', minVelocityThreshold = 0 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -24,12 +24,13 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   const [qualityIssues, setQualityIssues] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewShots, setReviewShots] = useState([]);
+  const [originalShots, setOriginalShots] = useState([]);
   const [analysisDuration, setAnalysisDuration] = useState(0);
   const [perMinute, setPerMinute] = useState(0);
   const [committing, setCommitting] = useState(false);
 
   const { analyze, reset: resetAnalysis, progress, statusMsg, detected, analyzing, setDetected } = useVideoAnalysis({
-    videoRef, canvasRef, batterHand, personalThresholds, cameraView,
+    videoRef, canvasRef, batterHand, personalThresholds, cameraView, minVelocityThreshold,
   });
 
   const bestSix = useMemo(() => {
@@ -88,7 +89,7 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
 
   const reset = useCallback(() => {
     setFile(null); setAiCoaching(null);
-    setQualityIssues([]); setReviewOpen(false); setReviewShots([]); setAnalysisDuration(0); setPerMinute(0);
+    setQualityIssues([]); setReviewOpen(false); setReviewShots([]); setOriginalShots([]); setAnalysisDuration(0); setPerMinute(0);
     resetAnalysis();
   }, [resetAnalysis]);
 
@@ -153,6 +154,7 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
         return;
       }
       setReviewShots(shots);
+      setOriginalShots(shots);
       setReviewOpen(true);
     } catch (err) {
       console.error('analysis failed', err);
@@ -163,11 +165,32 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   const commitReviewed = useCallback(async (finalShots) => {
     setCommitting(true);
     try {
+      // Negative training — anything in original list but NOT in finalShots is a rejection.
+      const finalIds = new Set(finalShots.map((s) => s.id));
+      const rejected = originalShots.filter((s) => !finalIds.has(s.id));
+      for (const r of rejected) {
+        try {
+          await logRejectedPrediction({
+            session,
+            prediction: {
+              shotType: r.shotType,
+              wagonAngle: r.wagonAngle,
+              runs: r.runs,
+              confidence: r.confidence,
+              features: r.features,
+              velocity: r.velocity,
+              footPosition: r.footPosition,
+            },
+          });
+        } catch (err) { console.warn('reject log failed', err); }
+      }
       await persistShotsAndPredictions(finalShots);
-      // mirror committed shots into the inline detected list for share/coaching UI
       setDetected(finalShots);
       setReviewOpen(false);
-      toast.success(`${finalShots.length} shot${finalShots.length === 1 ? '' : 's'} saved`);
+      const msg = rejected.length > 0
+        ? `${finalShots.length} saved · ${rejected.length} false detection${rejected.length === 1 ? '' : 's'} fed back to your AI`
+        : `${finalShots.length} shot${finalShots.length === 1 ? '' : 's'} saved`;
+      toast.success(msg);
       if (finalShots.length >= 3) await triggerBiomechCoaching();
     } catch (err) {
       console.error('commit failed', err);
@@ -175,7 +198,7 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
     } finally {
       setCommitting(false);
     }
-  }, [persistShotsAndPredictions, triggerBiomechCoaching, setDetected]);
+  }, [persistShotsAndPredictions, triggerBiomechCoaching, setDetected, originalShots, session]);
 
   if (!open) return null;
 
@@ -423,4 +446,6 @@ function formatTime(s) {
   const m = Math.floor(s / 60);
   const r = Math.floor(s % 60);
   return `${m}:${r.toString().padStart(2, '0')}`;
+}
+`;
 }

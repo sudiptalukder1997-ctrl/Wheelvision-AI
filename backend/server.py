@@ -89,6 +89,7 @@ class PredictionLog(BaseModel):
     actual_runs: Optional[int] = None
     correct: bool = True
     confidence: float = 0.0
+    rejected: bool = False    # True = user said "this wasn't a real shot at all"
 
 # ===================== Helpers =====================
 async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
@@ -541,6 +542,21 @@ def _recalc_personal_thresholds(corrections: List[Dict[str, Any]]) -> Dict[str, 
         thresholds[direction] = {"wrist_angle": round(mean, 2), "tolerance": round(tol, 2)}
     return thresholds
 
+def _recalc_min_velocity(rejected_preds: List[Dict[str, Any]]) -> float:
+    """Compute a personalised minimum-velocity floor from rejected detections.
+    Takes the 75th percentile of velocities of *false* detections and uses that as
+    the user's new minimum, so future detections must be faster than the noise band.
+    """
+    vels = [p.get('biomech', {}).get('wrist_velocity', 0) for p in rejected_preds if p.get('biomech')]
+    vels = [v for v in vels if isinstance(v, (int, float)) and v > 0]
+    if len(vels) < 3:
+        return 0.0
+    vels.sort()
+    idx = int(len(vels) * 0.75)
+    p75 = vels[min(idx, len(vels) - 1)]
+    # Cap so we don't make the app un-usable.
+    return float(min(p75, 40.0))
+
 @api_router.get("/profile/biomech")
 async def get_biomech_profile(request: Request):
     user = await require_user(request)
@@ -548,17 +564,21 @@ async def get_biomech_profile(request: Request):
     # Compute live accuracy from predictions log
     total = await db.predictions.count_documents({"user_id": uid})
     correct = await db.predictions.count_documents({"user_id": uid, "correct": True})
-    corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False})
+    corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False, "rejected": {"$ne": True}})
+    rejected_count = await db.predictions.count_documents({"user_id": uid, "rejected": True})
     accuracy = (correct / total * 100.0) if total else 0.0
     profile = user.get('biomech_profile') or {}
     thresholds = profile.get('personal_thresholds') or {}
     camera_view = profile.get('camera_view') or 'side'
+    min_velocity = float(profile.get('min_velocity_threshold') or 0.0)
     return {
         "personal_thresholds": thresholds,
         "default_thresholds": DEFAULT_THRESHOLDS,
         "total_predictions": total,
         "correct_predictions": correct,
         "corrections": corr_count,
+        "rejected_detections": rejected_count,
+        "min_velocity_threshold": min_velocity,
         "ai_accuracy": round(accuracy, 1),
         "samples_needed_for_next_recalc": max(0, 10 - (corr_count % 10)) if corr_count > 0 else 10,
         "camera_view": camera_view,
@@ -587,12 +607,34 @@ async def log_prediction(payload: PredictionLog, request: Request):
     doc['timestamp'] = datetime.now(timezone.utc).isoformat()
     await db.predictions.insert_one(doc)
 
-    # If this was a correction (correct=False), maybe recalc thresholds
     recalculated = False
-    if not payload.correct:
-        corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False})
+    recalculated_velocity = False
+
+    # Negative training: rejected detections retighten the velocity floor every 5 rejections.
+    if payload.rejected:
+        rejected_count = await db.predictions.count_documents({"user_id": uid, "rejected": True})
+        if rejected_count > 0 and rejected_count % 5 == 0:
+            cursor = db.predictions.find({"user_id": uid, "rejected": True}, {"_id": 0}).sort("timestamp", -1).limit(200)
+            rejects = await cursor.to_list(200)
+            min_vel = _recalc_min_velocity(rejects)
+            if min_vel > 0:
+                await db.users.update_one(
+                    {"user_id": uid},
+                    {"$set": {
+                        "biomech_profile.min_velocity_threshold": round(min_vel, 2),
+                        "biomech_profile.last_velocity_recalc_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+                recalculated_velocity = True
+
+    # Direction-correction training: every 10 corrections, recompute per-shot wrist-angle thresholds.
+    if (not payload.correct) and (not payload.rejected):
+        corr_count = await db.predictions.count_documents({"user_id": uid, "correct": False, "rejected": {"$ne": True}})
         if corr_count > 0 and corr_count % 10 == 0:
-            cursor = db.predictions.find({"user_id": uid, "correct": False}, {"_id": 0}).sort("timestamp", -1).limit(100)
+            cursor = db.predictions.find(
+                {"user_id": uid, "correct": False, "rejected": {"$ne": True}},
+                {"_id": 0},
+            ).sort("timestamp", -1).limit(100)
             corrections = await cursor.to_list(100)
             thresholds = _recalc_personal_thresholds(corrections)
             await db.users.update_one(
@@ -611,6 +653,7 @@ async def log_prediction(payload: PredictionLog, request: Request):
     return {
         "ok": True,
         "recalculated_thresholds": recalculated,
+        "recalculated_velocity_threshold": recalculated_velocity,
         "ai_accuracy": round(accuracy, 1),
         "total_predictions": total,
     }
