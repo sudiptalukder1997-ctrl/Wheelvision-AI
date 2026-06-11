@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { confidenceTier } from '@/lib/biomechanics';
+import { confidenceTier, realismCheck } from '@/lib/biomechanics';
 import logShotAndPrediction from '@/lib/predictionApi';
 import useVideoAnalysis from '@/lib/useVideoAnalysis';
 import { composeSingleCard, composeBestSixGrid, shareImageBlob } from '@/lib/composeShareCard';
+import ShotReviewSheet from '@/components/ShotReviewSheet';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Upload, X, Sparkles, Loader2, Share2, Trophy } from 'lucide-react';
+import { Upload, X, Sparkles, Loader2, Share2, Trophy, AlertTriangle, Camera } from 'lucide-react';
 
 export default function VideoAnalyzer({ open, onClose, session, batterHand, onAnalysisComplete, personalThresholds, userName, defaultCameraView = 'side' }) {
   const videoRef = useRef(null);
@@ -19,7 +20,15 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
   const [bestSixBusy, setBestSixBusy] = useState(false);
   const [cameraView, setCameraView] = useState(defaultCameraView === 'front' ? 'front' : 'side');
 
-  const { analyze, reset: resetAnalysis, progress, statusMsg, detected, analyzing } = useVideoAnalysis({
+  // Review flow state
+  const [qualityIssues, setQualityIssues] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewShots, setReviewShots] = useState([]);
+  const [analysisDuration, setAnalysisDuration] = useState(0);
+  const [perMinute, setPerMinute] = useState(0);
+  const [committing, setCommitting] = useState(false);
+
+  const { analyze, reset: resetAnalysis, progress, statusMsg, detected, analyzing, setDetected } = useVideoAnalysis({
     videoRef, canvasRef, batterHand, personalThresholds, cameraView,
   });
 
@@ -79,6 +88,7 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
 
   const reset = useCallback(() => {
     setFile(null); setAiCoaching(null);
+    setQualityIssues([]); setReviewOpen(false); setReviewShots([]); setAnalysisDuration(0); setPerMinute(0);
     resetAnalysis();
   }, [resetAnalysis]);
 
@@ -95,27 +105,22 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
 
   const persistShotsAndPredictions = useCallback(async (found) => {
     if (!session?.id || found.length === 0) return;
-    try {
-      for (const p of found) {
-        await logShotAndPrediction({
-          session,
-          prediction: {
-            shotType: p.shotType,
-            wagonAngle: p.wagonAngle,
-            runs: p.runs,
-            confidence: p.confidence,
-            features: p.features,
-            velocity: p.velocity,
-            footPosition: p.footPosition,
-          },
-          correct: true,
-        });
-      }
-      onAnalysisComplete?.();
-    } catch (err) {
-      console.error('persist shots failed', err);
-      toast.error(err?.response?.data?.detail || 'Could not save shots');
+    for (const p of found) {
+      await logShotAndPrediction({
+        session,
+        prediction: {
+          shotType: p.shotType,
+          wagonAngle: p.wagonAngle,
+          runs: p.runs,
+          confidence: p.confidence,
+          features: p.features,
+          velocity: p.velocity,
+          footPosition: p.footPosition,
+        },
+        correct: true,
+      });
     }
+    onAnalysisComplete?.();
   }, [session, onAnalysisComplete]);
 
   const triggerBiomechCoaching = useCallback(async () => {
@@ -136,15 +141,41 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
 
   const startAnalysis = useCallback(async () => {
     if (!file) return;
+    setQualityIssues([]); setReviewOpen(false); setAiCoaching(null);
     try {
-      const found = await analyze(file);
-      await persistShotsAndPredictions(found);
-      if (found.length >= 3) await triggerBiomechCoaching();
+      const result = await analyze(file);
+      const { shots, qualityCheck, perMinute: pm, durationSec } = result;
+      setAnalysisDuration(durationSec || 0);
+      setPerMinute(pm || 0);
+      if (qualityCheck && !qualityCheck.ok) {
+        setQualityIssues(qualityCheck.issues);
+        toast.error('Camera setup check failed — see suggestions above.');
+        return;
+      }
+      setReviewShots(shots);
+      setReviewOpen(true);
     } catch (err) {
       console.error('analysis failed', err);
       toast.error('Could not analyse video');
     }
-  }, [file, analyze, persistShotsAndPredictions, triggerBiomechCoaching]);
+  }, [file, analyze]);
+
+  const commitReviewed = useCallback(async (finalShots) => {
+    setCommitting(true);
+    try {
+      await persistShotsAndPredictions(finalShots);
+      // mirror committed shots into the inline detected list for share/coaching UI
+      setDetected(finalShots);
+      setReviewOpen(false);
+      toast.success(`${finalShots.length} shot${finalShots.length === 1 ? '' : 's'} saved`);
+      if (finalShots.length >= 3) await triggerBiomechCoaching();
+    } catch (err) {
+      console.error('commit failed', err);
+      toast.error(err?.response?.data?.detail || 'Could not save shots');
+    } finally {
+      setCommitting(false);
+    }
+  }, [persistShotsAndPredictions, triggerBiomechCoaching, setDetected]);
 
   if (!open) return null;
 
@@ -219,6 +250,37 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
           </div>
         )}
 
+        {/* Quality issues (blocks analysis until camera setup is fixed) */}
+        {qualityIssues.length > 0 && (
+          <div className="space-y-2" data-testid="quality-issues">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <div className="text-[10px] uppercase tracking-[0.3em] text-red-400 font-bold">CAMERA SETUP CHECK FAILED</div>
+            </div>
+            {qualityIssues.map((q) => (
+              <div key={q.code} className="flex items-start gap-2 p-2.5 rounded border border-red-500/40 bg-red-500/10 text-xs text-red-100">
+                <Camera className="w-4 h-4 text-red-300 mt-0.5 shrink-0" />
+                <div>{q.message}</div>
+              </div>
+            ))}
+            <button
+              onClick={startAnalysis}
+              className="px-3 py-1.5 rounded border border-primary/40 text-primary text-xs font-bold uppercase tracking-widest hover:bg-primary/10"
+              data-testid="retry-analysis-btn"
+            >
+              RETRY ANALYSIS
+            </button>
+          </div>
+        )}
+
+        {/* Per-minute over-detection warning (post-analysis, before review) */}
+        {perMinute > 15 && qualityIssues.length === 0 && (
+          <div className="flex items-start gap-2 p-2.5 rounded border border-yellow-500/40 bg-yellow-500/10 text-xs text-yellow-100">
+            <AlertTriangle className="w-4 h-4 text-yellow-300 mt-0.5 shrink-0" />
+            <div>⚠️ {perMinute.toFixed(1)} shots per minute detected — too many. Please check camera angle and lighting, and clean up false detections in the review screen.</div>
+          </div>
+        )}
+
         {/* detected shots gallery */}
         {detected.length > 0 && (
           <DetectedShotsGallery
@@ -237,6 +299,18 @@ export default function VideoAnalyzer({ open, onClose, session, batterHand, onAn
           <CoachingReport coaching={aiCoaching} busy={aiBusy} />
         )}
       </div>
+
+      {/* Manual review sheet */}
+      <ShotReviewSheet
+        open={reviewOpen}
+        shots={reviewShots}
+        onChange={setReviewShots}
+        onConfirm={commitReviewed}
+        onSkip={() => commitReviewed(reviewShots)}
+        onCancel={() => setReviewOpen(false)}
+        durationSec={analysisDuration}
+        committing={committing}
+      />
     </div>
   );
 }

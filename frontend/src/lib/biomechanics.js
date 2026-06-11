@@ -110,6 +110,8 @@ export function computeFeatures(keypoints, batterHand = 'RH') {
     body_lean: roundTo(bodyLean, 1),
     nose_y: nose?.y ?? null,
     wrist_pos: wrist ? { x: wrist.x, y: wrist.y } : null,
+    left_wrist_pos: lWrist ? { x: lWrist.x, y: lWrist.y, score: lWrist.score } : null,
+    right_wrist_pos: rWrist ? { x: rWrist.x, y: rWrist.y, score: rWrist.score } : null,
     keypoint_confidence: roundTo(keypointConfidence, 3),
     batter_hand: batterHand,
   };
@@ -134,18 +136,63 @@ export function computeMotion(historyFrames) {
   return { wrist_velocity: roundTo(vel * 100, 2), trajectory: roundTo(trajectory, 1), upward };
 }
 
-// Detect a swing in the recent history: needs rapid acceleration followed by deceleration
-// AND >= 15° wrist position change in <=8 consecutive frames.
-export function detectSwing(historyFrames, velocityThreshold = 4.0) {
-  if (!historyFrames || historyFrames.length < 8) return null;
-  const recent = historyFrames.slice(-8);
+// Detect a real batting swing in the recent history. Strict filters:
+//   1. BOTH wrists must move rapidly together (not just one arm).
+//   2. Velocity threshold raised 3× from prior naive default.
+//   3. "Ready position" — at least 8 prior frames must be relatively still BEFORE the swing.
+//   4. ≥15° wrist angle change within the swing window.
+//   5. Rapid accel→decel signature.
+// `velocityThreshold` here is the new (already 3×) value passed in by the caller.
+export function detectSwing(historyFrames, velocityThreshold = 12.0, opts = {}) {
+  const READY_FRAMES = opts.readyFrames ?? 8;
+  const SWING_WIN = 8;
+  if (!historyFrames || historyFrames.length < READY_FRAMES + SWING_WIN) return null;
+  const recent = historyFrames.slice(-SWING_WIN);
+  const ready = historyFrames.slice(-(READY_FRAMES + SWING_WIN), -SWING_WIN);
+
+  // ------- READY POSITION CHECK -------
+  // average wrist velocity in the ready window must be low (still standing).
+  const readyVels = [];
+  for (let i = 1; i < ready.length; i++) {
+    const a = ready[i - 1]?.wrist_pos;
+    const b = ready[i]?.wrist_pos;
+    if (!a || !b) continue;
+    readyVels.push(Math.hypot(b.x - a.x, b.y - a.y));
+  }
+  if (readyVels.length < READY_FRAMES - 2) return null;
+  const meanReadyVel = readyVels.reduce((s, v) => s + v, 0) / readyVels.length;
+  // "Still" = mean ready velocity is at most ~25% of the swing threshold.
+  if (meanReadyVel * 100 > velocityThreshold * 0.25) return null;
+
+  // ------- WRIST ANGLE CHANGE -------
   const angles = recent.map((f) => f.wrist_angle).filter((v) => v != null);
   if (angles.length < 6) return null;
-  const minA = Math.min(...angles);
-  const maxA = Math.max(...angles);
-  if (maxA - minA < 15) return null;
+  if (Math.max(...angles) - Math.min(...angles) < 15) return null;
 
-  // velocities per pair
+  // ------- BOTH WRISTS MOVE RAPIDLY (same time) -------
+  const lVels = [];
+  const rVels = [];
+  for (let i = 1; i < recent.length; i++) {
+    const la = recent[i - 1]?.left_wrist_pos;
+    const lb = recent[i]?.left_wrist_pos;
+    const ra = recent[i - 1]?.right_wrist_pos;
+    const rb = recent[i]?.right_wrist_pos;
+    if (la && lb) lVels.push(Math.hypot(lb.x - la.x, lb.y - la.y));
+    if (ra && rb) rVels.push(Math.hypot(rb.x - ra.x, rb.y - ra.y));
+  }
+  if (lVels.length < 4 || rVels.length < 4) return null;
+  const peakL = Math.max(...lVels);
+  const peakR = Math.max(...rVels);
+  // both peaks must exceed half the velocity threshold (so they're both moving)
+  const halfThresh = velocityThreshold / 2;
+  if (peakL * 100 < halfThresh || peakR * 100 < halfThresh) return null;
+  // both peaks must occur in the same half of the window (synchronised swing).
+  const peakIdxL = lVels.indexOf(peakL);
+  const peakIdxR = rVels.indexOf(peakR);
+  if (Math.abs(peakIdxL - peakIdxR) > 2) return null;
+
+  // ------- COMBINED VELOCITY THRESHOLD (3× harsher than legacy) -------
+  // Use the dominant wrist for velocity profile (legacy behaviour expected by callers).
   const vels = [];
   for (let i = 1; i < recent.length; i++) {
     const a = recent[i - 1]?.wrist_pos;
@@ -157,19 +204,19 @@ export function detectSwing(historyFrames, velocityThreshold = 4.0) {
   const peakIdx = vels.indexOf(Math.max(...vels));
   const peak = vels[peakIdx];
   if (peak * 100 < velocityThreshold) return null;
-  // Need decel after peak: at least one later velocity must be < peak * 0.5
+
+  // ------- ACCEL → DECEL -------
   const afterPeak = vels.slice(peakIdx + 1);
   if (afterPeak.length < 1) return null;
-  const decelerated = afterPeak.some((v) => v < peak * 0.5);
-  if (!decelerated) return null;
+  if (!afterPeak.some((v) => v < peak * 0.5)) return null;
 
-  // Compute aggregated features at the peak frame
   const peakFrame = recent[peakIdx + 1] || recent[recent.length - 1];
   const motion = computeMotion(recent);
   return {
     peak_frame: peakFrame,
     motion,
-    angle_change: maxA - minA,
+    angle_change: Math.max(...angles) - Math.min(...angles),
+    both_wrist_peaks: { left: peakL * 100, right: peakR * 100 },
   };
 }
 
@@ -242,17 +289,10 @@ export function classifyShot({ wrist_angle, elbow_angle, body_lean, velocity, up
   // Confidence = normalised best score
   const confidence = Math.max(0, Math.min(100, bestScore));
 
-  // Estimate runs from velocity (px/frame * 100)
-  let runs = 0;
-  if (velocity > 18) runs = upward ? 6 : 4;
-  else if (velocity > 12) runs = 3;
-  else if (velocity > 7) runs = 2;
-  else if (velocity > 3) runs = 1;
-  else runs = 0;
-
-  // Pull/Hook get a slight runs boost (broadcast assumption)
-  if ((best?.name === 'Pull' || best?.name === 'Hook') && runs === 3) runs = 4;
-  if (best?.name === 'Defend' && runs < 1) runs = 0;
+  // Realistic cricket runs mapping based on the new (3× higher) velocity scale.
+  // Target distribution: ~35-40% dots, 25-30% 1-2s, 15-20% 3-4s, ≤10% 6s.
+  // Default to 1 run if classifier confidence < 70.
+  const runs = pickRunsFromVelocity({ velocity, upward, confidence, defendIntent: best?.name === 'Defend' });
 
   return {
     shotType: best?.name || 'Unknown',
@@ -262,6 +302,21 @@ export function classifyShot({ wrist_angle, elbow_angle, body_lean, velocity, up
     footPosition,
     upward,
   };
+}
+
+// Shared run-bucket function — calibrated for the new 3× velocity scale.
+// velocity is in our "px-per-frame * 100" units (same as before).
+export function pickRunsFromVelocity({ velocity, upward, confidence, defendIntent }) {
+  // Default to a single when AI confidence is low — biases toward realistic 1-run.
+  if ((confidence ?? 0) < 70 && !defendIntent) return 1;
+  // Brand-new realistic thresholds (was: >3 → 1, >7 → 2, >12 → 3, >18 → 4). Now stricter:
+  if (velocity > 36 && upward) return 6;        // maximum + upward = six
+  if (velocity > 30) return 4;                  // fast wrist speed = four
+  if (velocity > 20) return 2;                  // medium = two
+  if (velocity > 10) return 1;                  // slow = single
+  if (defendIntent) return 0;
+  // very slow / minimal swing = dot
+  return 0;
 }
 
 // Front-on classifier — uses screen-space trajectory as the primary direction signal.
@@ -303,26 +358,17 @@ function classifyFrontOn({ trajectory, velocity, upward, elbow_angle, body_lean,
     shotType = 'Cut';
   }
 
-  // Runs from velocity (same buckets as side-on)
-  let runs = 0;
-  if (velocity > 18) runs = upward ? 6 : 4;
-  else if (velocity > 12) runs = 3;
-  else if (velocity > 7) runs = 2;
-  else if (velocity > 3) runs = 1;
-  else runs = 0;
-  if ((shotType === 'Pull' || shotType === 'Hook') && runs === 3) runs = 4;
-  if (shotType === 'Defend' && runs < 1) runs = 0;
-
-  // Confidence: stronger when motion is clearly horizontal (definitive direction)
-  // and weaker when nearly vertical / tiny.
+  // Runs — use the shared realistic mapping.
+  // Confidence is computed below; default to 1 when uncertain.
   const directional = Math.min(1, absW / 90);
-  const speedy = Math.min(1, velocity / 12);
-  const conf = Math.round((directional * 0.55 + speedy * 0.45) * 100);
+  const speedy = Math.min(1, velocity / 28);
+  const conf = Math.max(20, Math.min(100, Math.round((directional * 0.55 + speedy * 0.45) * 100)));
+  const runs = pickRunsFromVelocity({ velocity, upward, confidence: conf, defendIntent: shotType === 'Defend' });
 
   return {
     shotType,
     wagonAngle: Math.round(wagon),
-    confidence: Math.max(20, Math.min(100, conf)),
+    confidence: conf,
     runs,
     footPosition,
     upward,
@@ -341,4 +387,52 @@ export function confidenceTier(c) {
   if (c >= 90) return { tier: 'green', label: 'AUTO CONFIRM', color: '#22C55E' };
   if (c >= 70) return { tier: 'amber', label: 'CONFIRM?', color: '#EAB308' };
   return { tier: 'red', label: 'PLEASE CORRECT', color: '#EF4444' };
+}
+
+// ---------- Realism validator ----------
+// Given a list of shots, return an array of warnings that should be shown in the review UI.
+// Each warning has { code, severity ('warn' | 'error'), message }.
+export function realismCheck(shots, { videoDurationSec } = {}) {
+  const warnings = [];
+  const n = shots.length;
+  if (n === 0) return warnings;
+  const totalRuns = shots.reduce((a, s) => a + (s.runs || 0), 0);
+  const sr = (totalRuns / n) * 100;
+  const dots = shots.filter((s) => (s.runs || 0) === 0).length;
+  const boundaries = shots.filter((s) => (s.runs || 0) >= 4).length;
+  const dotPct = (dots / n) * 100;
+  const boundaryPct = (boundaries / n) * 100;
+
+  if (sr > 200) {
+    warnings.push({
+      code: 'high_strike_rate',
+      severity: 'warn',
+      message: '⚠️ Unusual results detected. The AI may have miscounted shots due to camera angle or lighting. Would you like to review and correct the detected shots?',
+    });
+  }
+  if (dotPct < 20 && n >= 6) {
+    warnings.push({
+      code: 'low_dot_pct',
+      severity: 'warn',
+      message: '⚠️ Very few dot balls detected — this may indicate over-detection. Please review.',
+    });
+  }
+  if (boundaryPct > 50 && n >= 6) {
+    warnings.push({
+      code: 'too_many_boundaries',
+      severity: 'warn',
+      message: '⚠️ More than 50% of shots are boundaries — please verify these detections are real.',
+    });
+  }
+  if (videoDurationSec && videoDurationSec > 0) {
+    const perMin = (n / (videoDurationSec / 60));
+    if (perMin > 15) {
+      warnings.push({
+        code: 'too_many_per_minute',
+        severity: 'warn',
+        message: `⚠️ ${perMin.toFixed(1)} shots per minute detected — too many. Please check camera angle and lighting.`,
+      });
+    }
+  }
+  return warnings;
 }
