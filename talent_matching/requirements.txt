@@ -1,0 +1,3 @@
+pydantic>=2.6
+anthropic>=0.70  # optional: only for --llm
+pytest>=8.0

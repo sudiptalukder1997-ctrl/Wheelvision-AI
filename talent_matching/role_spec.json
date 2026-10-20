@@ -1,0 +1,24 @@
+{
+  "role": "Staff GenAI Engineer",
+  "min_total_years": 8,
+  "near_miss_years": 7.5,
+  "min_ai_months": 24,
+  "near_miss_ai_months": 20,
+  "genai_era_start": "2022-01",
+  "service_policy": "strict",
+  "lenient_service_max_months": 24,
+  "lenient_service_min_years_ago": 5,
+  "b2c_policy": "recent",
+  "shortlist_threshold": 75,
+  "screen_threshold": 60,
+  "core_skills": ["llm", "rag", "agentic"],
+  "stack_weights": {
+    "rag": 4,
+    "agentic": 4,
+    "llm": 3,
+    "langgraph": 3,
+    "guardrails": 3,
+    "langchain": 2,
+    "genai": 1
+  }
+}
