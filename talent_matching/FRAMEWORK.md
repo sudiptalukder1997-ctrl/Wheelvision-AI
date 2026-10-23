@@ -20,8 +20,8 @@ most common sourcing mistake, because it either empties the funnel or lets noise
 |---|---|---|---|
 | **8+ years** | Knockout | 8+ years of **full-time** professional work after graduation. Internships, training periods and overlapping side gigs don't count. | Sum of de-duplicated full-time/contract months from the work history. |
 | **No service stint** | Knockout | **HM decision: one early, minor stint is OK.** At most one job at an IT services, consulting or outsourcing firm (TCS, Infosys, Wipro, Accenture, Cognizant…). It must be the candidate's first job and last ≤ 24 months. A second services job, or a long one, means reject. This is about engineering culture: product ownership vs. delivering to a client's spec. | Each employer is classified against a company list. Unknown employers go to a human. An allowed early stint is noted in the report. |
-| **No B2C** + **B2B SaaS or AI Native** | Knockout + scored | The candidate's **current company, and every company where they did their AI work**, must be B2B SaaS or a B2B AI-native company. Earlier B2C years cost points but don't reject. | Company classification + which roles contain the AI work. |
-| **2–3 years of exp in AI** | Knockout | At least **2 years of hands-on GenAI/LLM work**. "3" is a target, not a cap. Classical ML years don't count toward it; they're a bonus. | Months in roles whose bullets show real (not POC) LLM work, counted from 2022 onward. |
+| **No B2C** + **B2B SaaS or AI Native** | Knockout + scored | **HM decision:** the candidate's **current company, and every company where they did their AI work**, must not be B2C. They should be B2B SaaS or a B2B AI-native company. Earlier B2C years cost points but don't reject. | Company classification + which roles contain the AI work. |
+| **2–3 years of exp in AI** | Knockout | At least **2 years of hands-on GenAI/LLM work**. "3" is a target, not a cap. **HM decision: classical ML/NLP doesn't count** (churn models, pre-2022 BERT/transformer work), not even as a bonus. | Months in roles whose bullets show real (not POC) LLM work, counted from 2022 onward. |
 | **GenAI, Agentic AI, LLM, LangChain, LangGraph, guardrails, RAG** | Scored | The stack. **LLM + RAG + agentic** are the core; guardrails is the signal that they've shipped to real users. **HM decision: LangChain/LangGraph are preferred, not required.** Other frameworks (LlamaIndex, CrewAI, AutoGen, Semantic Kernel, Haystack, DSPy, custom orchestration) get half credit in their place. | Evidence strength per skill (see §4). Listing a skill without using it earns almost nothing. |
 | **Staff level** | Scored (strong) | Someone who sets technical direction across teams and is **still hands-on**. **HM decision: a Senior engineer doing staff-level work counts.** A Senior title with 3+ scope bullets (architected, led across teams, mentored, RFCs) in the last two roles gets the same title credit as Staff. | Title + scope language + recent build bullets. |
 
@@ -139,14 +139,15 @@ These are the ambiguities in the note. Get answers in writing, then set them in 
 | Service stint: ever, or not recent? | One early stint is OK, as long as it isn't major | `service_policy: lenient`, `lenient_service_max_months: 24` |
 | LangChain / LangGraph must-have? | Preferred, not required | `stack_weights` langgraph 4, langchain 3; alternatives get 50% |
 | Does the title have to say Staff? | No, a Senior doing staff-level work counts | Senior + 3 scope bullets = Staff title credit |
+| No B2C: whole career or recent? | Only the current company and the AI roles; earlier B2C is fine | `b2c_policy: recent` |
+| Does classical ML count toward AI years? | No. Only hands-on GenAI/LLM work counts | `genai_era_start: 2022-01`; only GenAI keywords qualify a role |
 
 **Still open:**
 
-1. **B2C:** current company and AI roles only, or anywhere in the career? Does a B2B arm of a consumer
-   company count (e.g. Swiggy's merchant platform)? (`b2c_policy`: `recent` | `strict` | `off`, currently `recent`)
-2. **AI years:** does classical ML/NLP (2018–2021 transformer work) count toward the 2 years?
-3. **Comp band and notice period ceiling.** 90-day notice is standard in India. Is buyout possible?
-4. **Location / remote**, and whether relocation is acceptable.
+1. **B2B arms of consumer companies** (e.g. Swiggy's merchant platform): these are currently treated as B2C.
+   If someone shows up with one, the recruiter overrides the company type by hand.
+2. **Comp band and notice period ceiling.** 90-day notice is standard in India. Is buyout possible?
+3. **Location / remote**, and whether relocation is acceptable.
 
 ---
 

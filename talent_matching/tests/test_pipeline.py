@@ -107,6 +107,25 @@ def test_ai_months_floor_at_genai_era(spec):
     assert agents.ai_months(c, spec, TODAY) == 12   # counted from 2022-01 only
 
 
+def test_classical_ml_does_not_count_as_ai_experience(spec):
+    c = Candidate(id="x", name="x", stints=[
+        Stint(company="Atlan", title="ML Engineer", start="2022-01",
+              bullets=["Shipped churn and fraud models with XGBoost to 300 enterprise customers",
+                       "Deployed BERT text classifiers in production"]),
+    ])
+    assert agents.ai_months(c, spec, TODAY) == 0
+
+
+def test_earlier_non_ai_b2c_role_is_allowed(spec):
+    c = Candidate(id="x", name="x", stints=[
+        Stint(company="Flipkart", title="SE", start="2014-01", end="2018-12",
+              bullets=["Built the checkout service for 100M users"]),
+        Stint(company="Atlan", title="Staff Engineer", start="2019-01",
+              bullets=["Shipped LangGraph agents with RAG to 300 enterprise customers"]),
+    ])
+    assert not any(r.startswith("B2C") for r in pipeline.evaluate(c, spec, TODAY).knockout.reasons)
+
+
 def test_poc_only_does_not_count_as_ai_experience(spec):
     c = Candidate(id="x", name="x", stints=[
         Stint(company="Atlan", title="SE", start="2022-01", bullets=["Explored LangChain in a POC"]),
