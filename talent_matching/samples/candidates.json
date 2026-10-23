@@ -1,117 +1,436 @@
 [
   {
-    "id": "c01", "name": "Ananya R. (sample)", "headline": "Staff Engineer, Conversational AI",
-    "location": "Bengaluru", "notice_period_days": 60,
-    "skills": ["Python", "LangGraph", "LangChain", "RAG", "Guardrails", "Kubernetes"],
+    "id": "c01",
+    "name": "Ananya R. (sample)",
+    "headline": "Staff Engineer, Conversational AI",
+    "location": "Bengaluru",
+    "notice_period_days": 60,
+    "skills": [
+      "Python",
+      "LangGraph",
+      "LangChain",
+      "RAG",
+      "Guardrails",
+      "Kubernetes"
+    ],
     "stints": [
-      {"company": "Zoho", "title": "Software Engineer", "start": "2015-07", "end": "2019-03",
-       "bullets": ["Built billing reconciliation service handling 2M invoices/month",
-                   "Owned the search indexing pipeline for Zoho Books"]},
-      {"company": "Freshworks", "title": "Senior Software Engineer", "start": "2019-04", "end": "2022-02",
-       "bullets": ["Led the design of the ticket-routing platform used by 40k business customers",
-                   "Mentored 4 engineers; ran design reviews for the Freddy ML team",
-                   "Shipped intent classification with transformers, cutting misroutes by 22%"]},
-      {"company": "Yellow.ai", "title": "Staff Engineer", "start": "2022-03", "end": null,
-       "bullets": ["Architected the LangGraph-based agent orchestration layer serving 300+ enterprise customers at p95 1.8s",
-                   "Built the RAG stack (hybrid search + re-rank on pgvector) that lifted answer accuracy from 71% to 89%",
-                   "Designed guardrails for prompt injection and PII redaction in production; zero P1 leaks in 18 months",
-                   "Set up the LLM evaluation harness (RAGAS + LLM-as-judge) gating every release",
-                   "Drove the cross-team RFC to standardise tool-calling across 5 product teams"]}
+      {
+        "company": "Zoho",
+        "title": "Software Engineer",
+        "start": "2015-07",
+        "end": "2019-03",
+        "bullets": [
+          "Built billing reconciliation service handling 2M invoices/month",
+          "Owned the search indexing pipeline for Zoho Books"
+        ]
+      },
+      {
+        "company": "Freshworks",
+        "title": "Senior Software Engineer",
+        "start": "2019-04",
+        "end": "2022-02",
+        "bullets": [
+          "Led the design of the ticket-routing platform used by 40k business customers",
+          "Mentored 4 engineers; ran design reviews for the Freddy ML team",
+          "Shipped intent classification with transformers, cutting misroutes by 22%"
+        ]
+      },
+      {
+        "company": "Yellow.ai",
+        "title": "Staff Engineer",
+        "start": "2022-03",
+        "end": null,
+        "bullets": [
+          "Architected the LangGraph-based agent orchestration layer serving 300+ enterprise customers at p95 1.8s",
+          "Built the RAG stack (hybrid search + re-rank on pgvector) that lifted answer accuracy from 71% to 89%",
+          "Designed guardrails for prompt injection and PII redaction in production; zero P1 leaks in 18 months",
+          "Set up the LLM evaluation harness (RAGAS + LLM-as-judge) gating every release",
+          "Drove the cross-team RFC to standardise tool-calling across 5 product teams"
+        ]
+      }
     ]
   },
   {
-    "id": "c02", "name": "Rahul M. (sample)", "headline": "Principal Engineer, Enterprise Search",
-    "location": "Hyderabad", "notice_period_days": 90,
-    "skills": ["LLM", "RAG", "LangChain", "Agents", "Go"],
+    "id": "c02",
+    "name": "Rahul M. (sample)",
+    "headline": "Principal Engineer, Enterprise Search",
+    "location": "Hyderabad",
+    "notice_period_days": 90,
+    "skills": [
+      "LLM",
+      "RAG",
+      "LangChain",
+      "Agents",
+      "Go"
+    ],
     "stints": [
-      {"company": "Infosys", "title": "Systems Engineer", "start": "2013-08", "end": "2015-05",
-       "bullets": ["Maintained Java batch jobs for a US retail client"]},
-      {"company": "Razorpay", "title": "Senior Software Engineer", "start": "2015-06", "end": "2021-12",
-       "bullets": ["Led the payments reconciliation platform; owned architecture across 3 teams",
-                   "Mentored 6 engineers, 2 promoted to senior"]},
-      {"company": "Glean", "title": "Principal Engineer", "start": "2022-01", "end": null,
-       "bullets": ["Built agentic workflows with tool-calling across 100+ enterprise connectors, used by 2M users",
-                   "Shipped RAG retrieval with re-ranking that improved answer relevance by 31%",
-                   "Owned the LLM guardrails layer: jailbreak and prompt injection defences in production",
-                   "Implemented LangChain-based evaluation pipelines with LangSmith"]}
+      {
+        "company": "Infosys",
+        "title": "Systems Engineer",
+        "start": "2013-08",
+        "end": "2015-05",
+        "bullets": [
+          "Maintained Java batch jobs for a US retail client"
+        ]
+      },
+      {
+        "company": "Razorpay",
+        "title": "Senior Software Engineer",
+        "start": "2015-06",
+        "end": "2021-12",
+        "bullets": [
+          "Led the payments reconciliation platform; owned architecture across 3 teams",
+          "Mentored 6 engineers, 2 promoted to senior"
+        ]
+      },
+      {
+        "company": "Glean",
+        "title": "Principal Engineer",
+        "start": "2022-01",
+        "end": null,
+        "bullets": [
+          "Built agentic workflows with tool-calling across 100+ enterprise connectors, used by 2M users",
+          "Shipped RAG retrieval with re-ranking that improved answer relevance by 31%",
+          "Owned the LLM guardrails layer: jailbreak and prompt injection defences in production",
+          "Implemented LangChain-based evaluation pipelines with LangSmith"
+        ]
+      }
     ]
   },
   {
-    "id": "c03", "name": "Karthik S. (sample)", "headline": "Staff Engineer, GenAI @ consumer app",
-    "location": "Bengaluru", "notice_period_days": 60,
-    "skills": ["LLM", "RAG", "LangGraph"],
+    "id": "c03",
+    "name": "Karthik S. (sample)",
+    "headline": "Staff Engineer, GenAI @ consumer app",
+    "location": "Bengaluru",
+    "notice_period_days": 60,
+    "skills": [
+      "LLM",
+      "RAG",
+      "LangGraph"
+    ],
     "stints": [
-      {"company": "Chargebee", "title": "Software Engineer", "start": "2014-06", "end": "2019-06",
-       "bullets": ["Built subscription proration engine used by 5k business customers"]},
-      {"company": "Swiggy", "title": "Staff Engineer", "start": "2019-07", "end": null,
-       "bullets": ["Shipped a LangGraph conversational ordering agent to 10M users",
-                   "Built RAG over menus with pgvector, cutting search latency by 40%",
-                   "Led architecture across 4 teams for the GenAI platform"]}
+      {
+        "company": "Chargebee",
+        "title": "Software Engineer",
+        "start": "2014-06",
+        "end": "2019-06",
+        "bullets": [
+          "Built subscription proration engine used by 5k business customers"
+        ]
+      },
+      {
+        "company": "Swiggy",
+        "title": "Staff Engineer",
+        "start": "2019-07",
+        "end": null,
+        "bullets": [
+          "Shipped a LangGraph conversational ordering agent to 10M users",
+          "Built RAG over menus with pgvector, cutting search latency by 40%",
+          "Led architecture across 4 teams for the GenAI platform"
+        ]
+      }
     ]
   },
   {
-    "id": "c04", "name": "Priya K. (sample)", "headline": "Senior AI Engineer",
-    "location": "Pune", "notice_period_days": 30,
-    "skills": ["LangChain", "RAG", "LLM"],
+    "id": "c04",
+    "name": "Priya K. (sample)",
+    "headline": "Senior AI Engineer",
+    "location": "Pune",
+    "notice_period_days": 30,
+    "skills": [
+      "LangChain",
+      "RAG",
+      "LLM"
+    ],
     "stints": [
-      {"company": "Druva", "title": "Software Engineer", "start": "2020-04", "end": "2022-12",
-       "bullets": ["Built backup scheduling APIs for enterprise customers"]},
-      {"company": "Haptik", "title": "Senior AI Engineer", "start": "2023-01", "end": null,
-       "bullets": ["Shipped RAG chatbots on LangChain for 50 enterprise customers",
-                   "Built LLM guardrails for PII masking in production"]}
+      {
+        "company": "Druva",
+        "title": "Software Engineer",
+        "start": "2020-04",
+        "end": "2022-12",
+        "bullets": [
+          "Built backup scheduling APIs for enterprise customers"
+        ]
+      },
+      {
+        "company": "Haptik",
+        "title": "Senior AI Engineer",
+        "start": "2023-01",
+        "end": null,
+        "bullets": [
+          "Shipped RAG chatbots on LangChain for 50 enterprise customers",
+          "Built LLM guardrails for PII masking in production"
+        ]
+      }
     ]
   },
   {
-    "id": "c05", "name": "Vikram T. (sample)", "headline": "Senior Engineer | GenAI | LangChain | LangGraph | RAG | Agents",
-    "location": "Chennai", "notice_period_days": 90,
-    "skills": ["LLM", "RAG", "LangChain", "LangGraph", "Agentic AI", "Guardrails", "GenAI", "Java", "Spring"],
+    "id": "c05",
+    "name": "Vikram T. (sample)",
+    "headline": "Senior Engineer | GenAI | LangChain | LangGraph | RAG | Agents",
+    "location": "Chennai",
+    "notice_period_days": 90,
+    "skills": [
+      "LLM",
+      "RAG",
+      "LangChain",
+      "LangGraph",
+      "Agentic AI",
+      "Guardrails",
+      "GenAI",
+      "Java",
+      "Spring"
+    ],
     "stints": [
-      {"company": "Zoho", "title": "Member Technical Staff", "start": "2014-07", "end": "2018-08",
-       "bullets": ["Developed Java REST services for Zoho CRM"]},
-      {"company": "Chargebee", "title": "Senior Software Engineer", "start": "2018-09", "end": null,
-       "bullets": ["Built Spring Boot microservices for invoicing at 3k req/s",
-                   "Explored LangChain for an internal POC on invoice Q&A",
-                   "Participated in a GenAI hackathon"]}
+      {
+        "company": "Zoho",
+        "title": "Member Technical Staff",
+        "start": "2014-07",
+        "end": "2018-08",
+        "bullets": [
+          "Developed Java REST services for Zoho CRM"
+        ]
+      },
+      {
+        "company": "Chargebee",
+        "title": "Senior Software Engineer",
+        "start": "2018-09",
+        "end": null,
+        "bullets": [
+          "Built Spring Boot microservices for invoicing at 3k req/s",
+          "Explored LangChain for an internal POC on invoice Q&A",
+          "Participated in a GenAI hackathon"
+        ]
+      }
     ]
   },
   {
-    "id": "c06", "name": "Meera J. (sample)", "headline": "Lead ML Engineer",
-    "location": "Mumbai", "notice_period_days": 60,
-    "skills": ["LLM", "RAG", "LangGraph", "Guardrails"],
+    "id": "c06",
+    "name": "Meera J. (sample)",
+    "headline": "Lead ML Engineer",
+    "location": "Mumbai",
+    "notice_period_days": 60,
+    "skills": [
+      "LLM",
+      "RAG",
+      "LangGraph",
+      "Guardrails"
+    ],
     "stints": [
-      {"company": "Fractal Analytics", "title": "Data Scientist", "start": "2015-06", "end": "2020-03",
-       "bullets": ["Built churn models for a telecom client"]},
-      {"company": "Atlan", "title": "Lead ML Engineer", "start": "2020-04", "end": null,
-       "bullets": ["Architected the LangGraph metadata agent used by 300 enterprise customers",
-                   "Shipped RAG over data catalogs with hybrid search in production",
-                   "Owned guardrails for prompt injection on customer-facing LLM features"]}
+      {
+        "company": "Fractal Analytics",
+        "title": "Data Scientist",
+        "start": "2015-06",
+        "end": "2020-03",
+        "bullets": [
+          "Built churn models for a telecom client"
+        ]
+      },
+      {
+        "company": "Atlan",
+        "title": "Lead ML Engineer",
+        "start": "2020-04",
+        "end": null,
+        "bullets": [
+          "Architected the LangGraph metadata agent used by 300 enterprise customers",
+          "Shipped RAG over data catalogs with hybrid search in production",
+          "Owned guardrails for prompt injection on customer-facing LLM features"
+        ]
+      }
     ]
   },
   {
-    "id": "c07", "name": "Arjun P. (sample)", "headline": "Staff Engineer, LLM Platform",
-    "location": "Remote (India)", "notice_period_days": 30,
-    "skills": ["LangGraph", "RAG", "LLM"],
+    "id": "c07",
+    "name": "Arjun P. (sample)",
+    "headline": "Staff Engineer, LLM Platform",
+    "location": "Remote (India)",
+    "notice_period_days": 30,
+    "skills": [
+      "LangGraph",
+      "RAG",
+      "LLM"
+    ],
     "stints": [
-      {"company": "Postman", "title": "Senior Software Engineer", "start": "2016-01", "end": "2021-11",
-       "bullets": ["Led the API monitoring platform architecture; mentored 5 engineers",
-                   "Built the collection runner used by 1M+ developers"]},
-      {"company": "NovaMind Labs", "title": "Staff Engineer", "start": "2021-12", "end": null,
-       "bullets": ["Built a multi-agent LangGraph system for contract review shipped to 40 enterprise customers",
-                   "Implemented RAG with Qdrant and re-ranking, p95 latency 1.2s",
-                   "Designed LLM guardrails and an eval suite with promptfoo"]}
+      {
+        "company": "Postman",
+        "title": "Senior Software Engineer",
+        "start": "2016-01",
+        "end": "2021-11",
+        "bullets": [
+          "Led the API monitoring platform architecture; mentored 5 engineers",
+          "Built the collection runner used by 1M+ developers"
+        ]
+      },
+      {
+        "company": "NovaMind Labs",
+        "title": "Staff Engineer",
+        "start": "2021-12",
+        "end": null,
+        "bullets": [
+          "Built a multi-agent LangGraph system for contract review shipped to 40 enterprise customers",
+          "Implemented RAG with Qdrant and re-ranking, p95 latency 1.2s",
+          "Designed LLM guardrails and an eval suite with promptfoo"
+        ]
+      }
     ]
   },
   {
-    "id": "c08", "name": "Sneha D. (sample)", "headline": "Engineering Manager, AI",
-    "location": "Bengaluru", "notice_period_days": 90,
-    "skills": ["LLM", "RAG", "Agents", "People management"],
+    "id": "c08",
+    "name": "Sneha D. (sample)",
+    "headline": "Engineering Manager, AI",
+    "location": "Bengaluru",
+    "notice_period_days": 90,
+    "skills": [
+      "LLM",
+      "RAG",
+      "Agents",
+      "People management"
+    ],
     "stints": [
-      {"company": "BrowserStack", "title": "Senior Software Engineer", "start": "2015-02", "end": "2021-06",
-       "bullets": ["Built the device-cloud scheduling service for enterprise customers"]},
-      {"company": "Postman", "title": "Engineering Manager", "start": "2021-07", "end": null,
-       "bullets": ["Managed a team of 9 delivering Postbot, the LLM assistant used by 500k developers",
-                   "Ran hiring and quarterly roadmap planning for the AI team",
-                   "Coordinated RAG and agent features with product and design"]}
+      {
+        "company": "BrowserStack",
+        "title": "Senior Software Engineer",
+        "start": "2015-02",
+        "end": "2021-06",
+        "bullets": [
+          "Built the device-cloud scheduling service for enterprise customers"
+        ]
+      },
+      {
+        "company": "Postman",
+        "title": "Engineering Manager",
+        "start": "2021-07",
+        "end": null,
+        "bullets": [
+          "Managed a team of 9 delivering Postbot, the LLM assistant used by 500k developers",
+          "Ran hiring and quarterly roadmap planning for the AI team",
+          "Coordinated RAG and agent features with product and design"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "c09",
+    "name": "Farhan A. (sample)",
+    "headline": "Senior Software Engineer, AI Platform",
+    "location": "Bengaluru",
+    "notice_period_days": 60,
+    "skills": [
+      "LangGraph",
+      "LangChain",
+      "RAG",
+      "Guardrails"
+    ],
+    "stints": [
+      {
+        "company": "Freshworks",
+        "title": "Software Engineer",
+        "start": "2016-07",
+        "end": "2020-12",
+        "bullets": [
+          "Built the email ingestion service processing 50M messages/day for business customers"
+        ]
+      },
+      {
+        "company": "Sprinklr",
+        "title": "Senior Software Engineer",
+        "start": "2021-01",
+        "end": null,
+        "bullets": [
+          "Architected the LangGraph agent platform now used by 4 product teams and 600 enterprise customers",
+          "Led the cross-team RFC that standardised RAG retrieval and re-ranking across the org",
+          "Mentored 5 engineers and ran design reviews for the GenAI guild",
+          "Built LLM guardrails for prompt injection and PII redaction in production",
+          "Set up the eval harness with LangSmith that gates every prompt release"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "c10",
+    "name": "Divya N. (sample)",
+    "headline": "Staff Engineer, Agents",
+    "location": "Pune",
+    "notice_period_days": 30,
+    "skills": [
+      "LlamaIndex",
+      "CrewAI",
+      "RAG",
+      "LLM"
+    ],
+    "stints": [
+      {
+        "company": "Druva",
+        "title": "Senior Software Engineer",
+        "start": "2015-05",
+        "end": "2021-08",
+        "bullets": [
+          "Led the architecture of the backup indexing platform for enterprise customers; mentored 4 engineers"
+        ]
+      },
+      {
+        "company": "Rocketlane",
+        "title": "Staff Engineer",
+        "start": "2021-09",
+        "end": null,
+        "bullets": [
+          "Built a multi-agent project-assistant on CrewAI shipped to 800 business customers",
+          "Implemented RAG with LlamaIndex and Qdrant over project data, p95 latency 1.5s",
+          "Designed guardrails for prompt injection on customer-facing LLM features",
+          "Drove the cross-team roadmap for AI features across 3 squads"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "c11",
+    "name": "Nikhil G. (sample)",
+    "headline": "Principal Engineer, GenAI",
+    "location": "Hyderabad",
+    "notice_period_days": 90,
+    "skills": [
+      "LangGraph",
+      "RAG",
+      "LLM"
+    ],
+    "stints": [
+      {
+        "company": "TCS",
+        "title": "Assistant Systems Engineer",
+        "start": "2012-08",
+        "end": "2013-12",
+        "bullets": [
+          "Supported a banking client's mainframe batch jobs"
+        ]
+      },
+      {
+        "company": "Freshworks",
+        "title": "Software Engineer",
+        "start": "2014-01",
+        "end": "2017-06",
+        "bullets": [
+          "Built reporting APIs for business customers"
+        ]
+      },
+      {
+        "company": "Accenture",
+        "title": "Tech Lead",
+        "start": "2017-07",
+        "end": "2020-12",
+        "bullets": [
+          "Led delivery of a CRM migration for a telecom client"
+        ]
+      },
+      {
+        "company": "Glean",
+        "title": "Principal Engineer",
+        "start": "2021-01",
+        "end": null,
+        "bullets": [
+          "Architected LangGraph agents over enterprise connectors used by 1M users",
+          "Shipped RAG retrieval with re-ranking that improved answer relevance by 25%"
+        ]
+      }
     ]
   }
 ]

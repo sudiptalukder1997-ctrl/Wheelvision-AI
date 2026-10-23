@@ -28,7 +28,7 @@ python -m pytest talent_matching/tests
 | `agents.py` | Sourcing, company classifier, knockouts, evidence, seniority, scorer, screen questions |
 | `llm.py` | Optional Claude steps (resume parsing, unknown-company classification) |
 | `pipeline.py` | Orchestrator + markdown recruiter report |
-| `samples/` | 8 fictional candidates covering each edge case, plus the generated `report.md` |
+| `samples/` | 11 fictional candidates covering each edge case, plus the generated `report.md` |
 
 Knockouts and scoring are deterministic rules, so every reject is auditable. Claude is only used
 to parse resumes and classify companies, and when it isn't sure the case goes to a human (HOLD).

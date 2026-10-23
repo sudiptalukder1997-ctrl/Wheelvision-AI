@@ -21,7 +21,7 @@ def evaluate(c: Candidate, spec: RoleSpec, today: Optional[date] = None, use_llm
     evidence = agents.collect_evidence(c)
     scores, staff_flags = agents.score(c, spec, today, evidence, ai_mo, years)
     total = round(sum(scores.values()), 1)
-    flags = staff_flags + agents.red_flags(c, evidence, spec, today)
+    flags = staff_flags + agents.red_flags(c, evidence, spec, today) + ko.notes
 
     if not ko.passed:
         decision = Decision.REJECT

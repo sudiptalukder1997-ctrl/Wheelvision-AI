@@ -19,18 +19,18 @@ most common sourcing mistake, because it either empties the funnel or lets noise
 | Line in the note | Type | What it really means | How we verify it |
 |---|---|---|---|
 | **8+ years** | Knockout | 8+ years of **full-time** professional work after graduation. Internships, training periods and overlapping side gigs don't count. | Sum of de-duplicated full-time/contract months from the work history. |
-| **No service stint** | Knockout | The candidate has **never worked at an IT services, consulting or outsourcing firm** (TCS, Infosys, Wipro, Accenture, Cognizant…). This is about engineering culture: product ownership vs. delivering to a client's spec. | Each employer is classified against a company list. Unknown employers go to a human. |
+| **No service stint** | Knockout | **HM decision: one early, minor stint is OK.** At most one job at an IT services, consulting or outsourcing firm (TCS, Infosys, Wipro, Accenture, Cognizant…). It must be the candidate's first job and last ≤ 24 months. A second services job, or a long one, means reject. This is about engineering culture: product ownership vs. delivering to a client's spec. | Each employer is classified against a company list. Unknown employers go to a human. An allowed early stint is noted in the report. |
 | **No B2C** + **B2B SaaS or AI Native** | Knockout + scored | The candidate's **current company, and every company where they did their AI work**, must be B2B SaaS or a B2B AI-native company. Earlier B2C years cost points but don't reject. | Company classification + which roles contain the AI work. |
 | **2–3 years of exp in AI** | Knockout | At least **2 years of hands-on GenAI/LLM work**. "3" is a target, not a cap. Classical ML years don't count toward it; they're a bonus. | Months in roles whose bullets show real (not POC) LLM work, counted from 2022 onward. |
-| **GenAI, Agentic AI, LLM, LangChain, LangGraph, guardrails, RAG** | Scored | The stack. **LLM + RAG + agentic** are the core; LangChain/LangGraph are the named tools; guardrails is the signal that they've shipped to real users. | Evidence strength per skill (see §4). Listing a skill without using it earns almost nothing. |
-| **Staff level** | Scored (strong) | Someone who sets technical direction across teams and is **still hands-on**. A title alone doesn't prove it. | Title + scope language (architected, led across teams, mentored) + recent build bullets. |
+| **GenAI, Agentic AI, LLM, LangChain, LangGraph, guardrails, RAG** | Scored | The stack. **LLM + RAG + agentic** are the core; guardrails is the signal that they've shipped to real users. **HM decision: LangChain/LangGraph are preferred, not required.** Other frameworks (LlamaIndex, CrewAI, AutoGen, Semantic Kernel, Haystack, DSPy, custom orchestration) get half credit in their place. | Evidence strength per skill (see §4). Listing a skill without using it earns almost nothing. |
+| **Staff level** | Scored (strong) | Someone who sets technical direction across teams and is **still hands-on**. **HM decision: a Senior engineer doing staff-level work counts.** A Senior title with 3+ scope bullets (architected, led across teams, mentored, RFCs) in the last two roles gets the same title credit as Staff. | Title + scope language + recent build bullets. |
 
 ### Why these interpretations
 
-- **"No service stint" = never, by default.** That's the literal reading. Many hiring managers
-  actually mean "not recently" or "not as most of their career". The framework supports a
-  `lenient` policy (≤ 24 months of services, as a first job, ended 5+ years ago). **Confirm with the
-  HM before sourcing** (§6 Q1). The choice changes the pool size by roughly 3–5x in India.
+- **"No service stint" = one early, minor stint allowed** (HM confirmed, `service_policy: lenient`).
+  Many strong Indian engineers started at TCS/Infosys out of campus, then moved to product. Rejecting them
+  costs a lot of the pool. Going *back* to services later, or spending years there, is the real
+  culture signal, so both still reject. `strict` (never) is still available if the HM changes their mind.
 - **AI services firms are still services.** Fractal, Tiger Analytics, Quantiphi, LatentView, Mu Sigma
   and Tredence sound like "AI companies", but they bill clients for projects. This is the trap
   most screeners fall into.
@@ -85,7 +85,7 @@ with the data (§6), and don't loosen it quietly.
 |---|---|---|
 | **GenAI depth & production evidence** | 35 | AI months (up to 36 → 15 pts), bullets showing *shipped* LLM work with users/latency/scale/business numbers (12), evals / observability / LLMOps (8). |
 | **Staff-level scope** | 25 | Current title (Staff/Principal/Architect/Lead = 10, Senior = 6), scope language: architected, led across teams, mentored, RFCs, roadmap (12), recent hands-on build bullets (3). |
-| **Stack coverage** | 20 | RAG 4 · Agentic 4 · LLM 3 · LangGraph 3 · Guardrails 3 · LangChain 2 · GenAI 1, each multiplied by evidence strength. |
+| **Stack coverage** | 20 | LangGraph 4 · RAG 4 · Agentic 4 · LangChain 3 · LLM 3 · Guardrails 3 · GenAI 1 (scaled to 20), each multiplied by evidence strength. Alternatives to LangChain/LangGraph get 50%. |
 | **Company fit** | 15 | Share of career at B2B SaaS / AI-native (12) + currently at one (3). |
 | **Recency & stability** | 5 | Doing GenAI in the current role (3), average tenure ≥ 18 months (2). |
 
@@ -132,17 +132,21 @@ alone does not count as AI experience.
 
 These are the ambiguities in the note. Get answers in writing, then set them in `role_spec.json`.
 
-1. **Service stint:** ever, or not recent? Would a 1.5-year first job at Infosys in 2014 rule out an
-   otherwise perfect candidate? (`service_policy`: `strict` | `lenient`)
-2. **B2C:** current company and AI roles only, or anywhere in the career? Does a B2B arm of a consumer
-   company count (e.g. Swiggy's merchant platform)? (`b2c_policy`: `recent` | `strict` | `off`)
-3. **Staff level:** do we take strong Senior engineers from top B2B SaaS who are doing staff-scope work,
-   or does the title have to say Staff/Principal?
-4. **LangChain / LangGraph:** must-have tools, or will LlamaIndex / CrewAI / custom orchestration
-   count? (Strong engineers often skip LangChain on purpose. Rejecting them for that is costly.)
-5. **AI years:** does classical ML/NLP (2018–2021 transformer work) count toward the 2 years?
-6. **Comp band and notice period ceiling.** 90-day notice is standard in India. Is buyout possible?
-7. **Location / remote**, and whether relocation is acceptable.
+**Decided with the HM:**
+
+| Question | Answer | Config |
+|---|---|---|
+| Service stint: ever, or not recent? | One early stint is OK, as long as it isn't major | `service_policy: lenient`, `lenient_service_max_months: 24` |
+| LangChain / LangGraph must-have? | Preferred, not required | `stack_weights` langgraph 4, langchain 3; alternatives get 50% |
+| Does the title have to say Staff? | No, a Senior doing staff-level work counts | Senior + 3 scope bullets = Staff title credit |
+
+**Still open:**
+
+1. **B2C:** current company and AI roles only, or anywhere in the career? Does a B2B arm of a consumer
+   company count (e.g. Swiggy's merchant platform)? (`b2c_policy`: `recent` | `strict` | `off`, currently `recent`)
+2. **AI years:** does classical ML/NLP (2018–2021 transformer work) count toward the 2 years?
+3. **Comp band and notice period ceiling.** 90-day notice is standard in India. Is buyout possible?
+4. **Location / remote**, and whether relocation is acceptable.
 
 ---
 

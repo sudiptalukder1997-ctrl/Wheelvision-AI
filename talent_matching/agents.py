@@ -59,14 +59,18 @@ def boolean_search(spec: RoleSpec) -> Dict[str, str]:
              'OR "senior staff" OR "AI architect" OR "lead AI engineer" OR "senior software engineer")'
     core = '(LLM OR "large language model" OR GenAI OR "generative AI")'
     stack = '(RAG OR "retrieval augmented" OR LangGraph OR LangChain OR agentic OR "AI agents")'
-    exclude_services = " ".join(
-        f'NOT "{n}"' for n in ["TCS", "Infosys", "Wipro", "Cognizant", "Accenture", "Capgemini",
-                               "HCL", "Tech Mahindra", "LTIMindtree", "Fractal", "Tiger Analytics"])
+    services = ["TCS", "Infosys", "Wipro", "Cognizant", "Accenture", "Capgemini",
+                "HCL", "Tech Mahindra", "LTIMindtree", "Fractal", "Tiger Analytics"]
+    # Under the lenient policy an early services job is fine, so a NOT on the whole profile would
+    # drop good people. Only exclude services firms as the *current* employer then.
+    exclude = "" if spec.service_policy == "lenient" else " " + " ".join(f'NOT "{n}"' for n in services)
+    past = ("Past company: don't exclude, the agent checks the 'one early stint' rule"
+            if spec.service_policy == "lenient" else "Past company: exclude the IT services list")
     return {
-        "linkedin_recruiter": f"{titles} AND {core} AND {stack} {exclude_services}",
+        "linkedin_recruiter": f"{titles} AND {core} AND {stack}{exclude}",
         "naukri_keywords": "LLM, RAG, LangGraph, LangChain, Agentic AI, Guardrails, Staff Engineer",
-        "filters": f"Experience >= {spec.min_total_years:g} yrs; Current company: B2B SaaS / AI-native target list; "
-                   "Past company: exclude IT services list (Recruiter 'past company' filter)",
+        "filters": f"Experience >= {spec.min_total_years:g} yrs; Current company: B2B SaaS / AI-native target list, "
+                   f"exclude {', '.join(services)}; {past}",
     }
 
 # ---------------------------------------------------------------- 3. company classifier
@@ -94,6 +98,8 @@ SKILL_PATTERNS: Dict[str, str] = {
     "agentic": r"\bagent(s|ic)?\b|multi-agent|tool[- ]calling|function[- ]calling|crewai|autogen|langgraph",
     "langchain": r"langchain|\blcel\b|langsmith",
     "langgraph": r"langgraph",
+    # Other orchestration frameworks: half credit in place of LangChain/LangGraph (HM: "preferable", not required)
+    "orchestration_alt": r"llama ?index|crewai|autogen|semantic kernel|haystack|\bdspy\b|custom (agent )?orchestrat",
     "guardrails": r"guardrail|nemo guardrails|llama ?guard|pii (redaction|masking)|jailbreak|prompt injection|"
                   r"content moderation|hallucination (detection|check)",
     "genai": r"gen ?ai|generative ai",
@@ -101,7 +107,8 @@ SKILL_PATTERNS: Dict[str, str] = {
              r"langsmith|langfuse|arize|observability",
 }
 _RX = {k: re.compile(v, re.I) for k, v in SKILL_PATTERNS.items()}
-GENAI_SKILLS = ["llm", "rag", "agentic", "langchain", "langgraph", "guardrails", "genai"]
+GENAI_SKILLS = ["llm", "rag", "agentic", "langchain", "langgraph", "orchestration_alt", "guardrails", "genai"]
+ALT_FRAMEWORK_CREDIT = 0.5
 
 PRODUCTION = re.compile(
     r"production|\bprod\b|shipped|launched|deployed|customers?|\busers?\b|enterprise|latency|p9[59]|\bscale|"
@@ -156,22 +163,26 @@ def total_years(c: Candidate, today: date) -> float:
 
 def knockout(c: Candidate, spec: RoleSpec, today: date, years: float, ai_mo: int) -> KnockoutResult:
     r = KnockoutResult(passed=True)
-    now = today.year * 12 + today.month
 
     if years < spec.near_miss_years:
         r.reasons.append(f"Experience {years:.1f} yrs < {spec.min_total_years:g} required")
     elif years < spec.min_total_years:
         r.holds.append(f"Near-miss on experience: {years:.1f} yrs (need {spec.min_total_years:g})")
 
-    services = [s for s in work_stints(c) if s.company_type == CompanyType.SERVICES]
+    stints = work_stints(c)
+    services = [s for s in stints if s.company_type == CompanyType.SERVICES]
     if services:
         months = merged_months(stint_span(s, today) for s in services)
-        ended_ago = (now - max(stint_span(s, today)[1] for s in services)) / 12
         names = ", ".join(sorted({s.company for s in services}))
-        lenient_ok = (spec.service_policy == "lenient" and months <= spec.lenient_service_max_months
-                      and ended_ago >= spec.lenient_service_min_years_ago)
-        if not lenient_ok:
-            r.reasons.append(f"Service stint: {names} ({months} months, policy={spec.service_policy})")
+        # Lenient = one early, minor stint: a single services job, as the first job, no longer than the cap
+        early_minor = len(services) == 1 and services[0] is stints[0] and months <= spec.lenient_service_max_months
+        if spec.service_policy == "lenient" and early_minor:
+            r.notes.append(f"Early service stint at {names} ({months} months), allowed by policy")
+        else:
+            why = ("only one early stint of up to "
+                   f"{spec.lenient_service_max_months} months is allowed") if spec.service_policy == "lenient" \
+                else "policy=strict"
+            r.reasons.append(f"Service stint: {names} ({months} months; {why})")
 
     if spec.b2c_policy != "off":
         cur = current_stint(c)
@@ -198,6 +209,7 @@ SENIOR_TITLE = re.compile(r"\bsenior|\bsr\.?\b|\bsde ?(iii|3)\b", re.I)
 MANAGER_TITLE = re.compile(r"\b(manager|director|head|vp|vice president)\b", re.I)
 SCOPE = re.compile(r"\b(led|lead|architected|architecture|owned|mentor(ed|ing)?|cross[- ](team|functional)|roadmap|"
                    r"design reviews?|rfcs?|tech lead|drove|set (the )?technical direction|hired|org-wide|platform)\b", re.I)
+STAFF_SCOPE_HITS = 3   # scope bullets in the last two roles that make a Senior title count as staff
 HANDS_ON = re.compile(r"\b(built|implemented|wrote|coded|shipped|developed|designed and built|optimi[sz]ed)\b", re.I)
 
 
@@ -206,14 +218,15 @@ def seniority(c: Candidate, years: float) -> Tuple[float, List[str]]:
     flags: List[str] = []
     if cur is None:
         return 0.0, ["No work history"]
-    if STAFF_TITLE.search(cur.title):
+    recent = [b for s in work_stints(c)[-2:] for b in s.bullets]
+    scope_hits = sum(1 for b in recent if SCOPE.search(b))
+    # HM: a Senior engineer doing staff-level work counts as staff, so scope can stand in for the title
+    if STAFF_TITLE.search(cur.title) or (SENIOR_TITLE.search(cur.title) and scope_hits >= STAFF_SCOPE_HITS):
         title_pts = 10
     elif SENIOR_TITLE.search(cur.title):
         title_pts = 6
     else:
         title_pts = 2
-    recent = [b for s in work_stints(c)[-2:] for b in s.bullets]
-    scope_hits = sum(1 for b in recent if SCOPE.search(b))
     hands_on = any(HANDS_ON.search(b) for b in cur.bullets)
 
     if MANAGER_TITLE.search(cur.title) and not STAFF_TITLE.search(cur.title):
@@ -252,7 +265,10 @@ def red_flags(c: Candidate, evidence: Dict[str, SkillEvidence], spec: RoleSpec, 
 def score(c: Candidate, spec: RoleSpec, today: date, evidence: Dict[str, SkillEvidence],
           ai_mo: int, years: float) -> Tuple[Dict[str, float], List[str]]:
     def strength(k: str) -> float:
-        return evidence[k].strength if k in evidence else 0.0
+        own = evidence[k].strength if k in evidence else 0.0
+        if k in ("langchain", "langgraph"):
+            return max(own, strength("orchestration_alt") * ALT_FRAMEWORK_CREDIT)
+        return own
 
     prod_bullets = sum(1 for s in work_stints(c) for b in s.bullets
                        if bullet_strength(b) == 1.0 and any(_RX[k].search(b) for k in GENAI_SKILLS))

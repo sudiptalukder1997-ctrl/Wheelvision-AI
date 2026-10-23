@@ -52,7 +52,6 @@ class RoleSpec(BaseModel):
     genai_era_start: str = "2022-01"
     service_policy: Literal["strict", "lenient"] = "strict"
     lenient_service_max_months: int = 24
-    lenient_service_min_years_ago: int = 5
     b2c_policy: Literal["recent", "strict", "off"] = "recent"
     shortlist_threshold: int = 75
     screen_threshold: int = 60
@@ -82,6 +81,7 @@ class KnockoutResult(BaseModel):
     passed: bool
     reasons: List[str] = Field(default_factory=list)      # hard fails
     holds: List[str] = Field(default_factory=list)        # needs a human before deciding
+    notes: List[str] = Field(default_factory=list)        # passed, but worth telling the recruiter
 
 
 class Evaluation(BaseModel):

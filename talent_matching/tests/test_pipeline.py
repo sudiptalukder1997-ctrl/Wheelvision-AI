@@ -24,13 +24,16 @@ def results(spec):
 
 @pytest.mark.parametrize("cid,decision,reason", [
     ("c01", Decision.SHORTLIST, None),
-    ("c02", Decision.REJECT, "Service stint: Infosys"),
+    ("c02", Decision.SHORTLIST, None),                        # one early, short Infosys stint: allowed
     ("c03", Decision.REJECT, "B2C: Swiggy"),
     ("c04", Decision.REJECT, "Experience"),
     ("c05", Decision.REJECT, "Hands-on GenAI experience 0 months"),
     ("c06", Decision.REJECT, "Service stint: Fractal Analytics"),
     ("c07", Decision.HOLD, None),
     ("c08", Decision.REJECT, None),
+    ("c09", Decision.SHORTLIST, None),                        # Senior title, staff-level scope
+    ("c10", Decision.SHORTLIST, None),                        # LlamaIndex/CrewAI instead of LangChain
+    ("c11", Decision.REJECT, "Service stint: Accenture, TCS"),  # two stints, the later one is major
 ])
 def test_sample_decisions(results, cid, decision, reason):
     e = results[cid]
@@ -39,12 +42,44 @@ def test_sample_decisions(results, cid, decision, reason):
         assert any(r.startswith(reason) for r in e.knockout.reasons)
 
 
-def test_lenient_service_policy_lets_old_short_stint_through(spec):
-    spec.service_policy = "lenient"
+def test_strict_service_policy_rejects_any_stint(spec):
+    spec.service_policy = "strict"
     cands = [Candidate.model_validate(x) for x in json.loads((ROOT / "samples/candidates.json").read_text())]
     res = {e.candidate.id: e for e in pipeline.run(cands, spec, TODAY)}
-    assert res["c02"].decision == Decision.SHORTLIST        # 22 months, ended 2015
-    assert res["c06"].decision == Decision.REJECT           # 58 months at Fractal: too long
+    assert res["c02"].decision == Decision.REJECT
+
+
+def test_early_service_stint_noted_for_recruiter(results):
+    assert any(f.startswith("Early service stint at Infosys") for f in results["c02"].flags)
+
+
+def _profile(first_company, second_company="Freshworks"):
+    bullets = ["Shipped LangGraph agents with RAG to 200 enterprise customers"]
+    return Candidate(id="x", name="x", stints=[
+        Stint(company=first_company, title="SE", start="2014-01", end="2015-06"),
+        Stint(company=second_company, title="Senior SE", start="2015-07", bullets=bullets),
+    ])
+
+
+def test_service_stint_must_be_the_first_job(spec):
+    early = pipeline.evaluate(_profile("Infosys"), spec, TODAY)
+    late = pipeline.evaluate(Candidate(id="y", name="y", stints=[
+        Stint(company="Freshworks", title="SE", start="2012-01", end="2013-12"),
+        Stint(company="Infosys", title="SE", start="2014-01", end="2015-06"),
+        Stint(company="Atlan", title="Senior SE", start="2015-07",
+              bullets=["Shipped LangGraph agents with RAG to 200 enterprise customers"]),
+    ]), spec, TODAY)
+    assert early.knockout.passed
+    assert not late.knockout.passed
+
+
+def test_senior_with_staff_scope_gets_staff_title_credit(results):
+    # c09 is "Senior Software Engineer" but leads cross-team architecture
+    assert results["c09"].scores["staff_scope"] >= 22
+
+
+def test_langchain_langgraph_preferred_over_alternatives(results):
+    assert 0 < results["c10"].scores["stack"] < results["c09"].scores["stack"]
 
 
 def test_keyword_stuffing_flagged(results):
